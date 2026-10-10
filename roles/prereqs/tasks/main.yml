@@ -1,0 +1,75 @@
+---
+# Every Ceph host: package repo, cephadm + container runtime, time sync, firewall, image.
+- name: Supported platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'RedHat'
+      - ansible_facts.distribution_major_version | int >= 9
+    fail_msg: "This role supports EL9/EL10 (Alma/Rocky/RHEL); found {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+
+- name: Ceph {{ ceph_release }} package repository
+  ansible.builtin.yum_repository:
+    name: ceph-noarch
+    description: "Ceph {{ ceph_release }} noarch"
+    baseurl: "{{ ceph_repo_url }}/noarch"
+    gpgcheck: true
+    gpgkey: "{{ ceph_repo_gpgkey }}"
+
+- name: cephadm and runtime dependencies
+  ansible.builtin.dnf:
+    name:
+      - "cephadm-{{ ceph_release }}"
+      - podman
+      - lvm2
+      - chrony
+      - python3
+    state: present
+
+- name: chronyd enabled and running
+  ansible.builtin.systemd_service:
+    name: chronyd
+    state: started
+    enabled: true
+
+- name: Wait for time synchronisation (monitors warn on clock skew)
+  ansible.builtin.command: chronyc waitsync 12 0.5
+  register: waitsync
+  changed_when: false
+  failed_when: false
+
+- name: Clock not synchronised
+  ansible.builtin.debug:
+    msg: "chrony did not report sync on {{ inventory_hostname }}; expect HEALTH_WARN clock skew if NTP is unreachable"
+  when: waitsync.rc != 0
+
+- name: Firewall ports (mon, osd/mgr range, dashboard, mgr metrics)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    systemctl is-active --quiet firewalld || { echo inactive; exit 0; }
+    changed=0
+    for svc in ceph-mon ceph; do
+      firewall-cmd --permanent --query-service="$svc" >/dev/null || { firewall-cmd --permanent --add-service="$svc" >/dev/null; changed=1; }
+    done
+    for port in 8443/tcp 9283/tcp; do
+      firewall-cmd --permanent --query-port="$port" >/dev/null || { firewall-cmd --permanent --add-port="$port" >/dev/null; changed=1; }
+    done
+    [ "$changed" = 0 ] || firewall-cmd --reload >/dev/null
+    echo "changed=$changed"
+  args:
+    executable: /bin/bash
+  register: firewall
+  changed_when: "'changed=1' in firewall.stdout"
+
+- name: Is the Ceph image present
+  ansible.builtin.command: podman image exists {{ ceph_image }}
+  register: image
+  changed_when: false
+  failed_when: false
+
+- name: Pull {{ ceph_image }} (about 1.5 GB, first run only)
+  ansible.builtin.command: podman pull --quiet {{ ceph_image }}
+  when: image.rc != 0
+  register: pull
+  retries: 3
+  delay: 15
+  until: pull.rc == 0

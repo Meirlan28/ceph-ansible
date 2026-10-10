@@ -1,0 +1,4 @@
+*.retry
+inventory/*.local.yml
+secrets*.yml
+secrets*.json
