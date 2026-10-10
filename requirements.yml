@@ -1,0 +1,15 @@
+---
+# Pinned dependencies. Install into ./collections (see ansible.cfg):
+#   ansible-galaxy collection install -r requirements.yml
+#
+# ceph.cephadm = upstream cephadm-ansible. It is not published on Galaxy, so it is installed
+# straight from the git tag; v5.0.3 is the release on the "tentacle" branch (Ceph 20.2).
+# community.general >= 11 no longer supports ansible-core 2.16 (what EL9/EL10 ship).
+collections:
+  - name: https://github.com/ceph/cephadm-ansible.git
+    type: git
+    version: v5.0.3
+  - name: ansible.posix
+    version: ">=1.6,<2.0"
+  - name: community.general
+    version: ">=10.0,<11.0"

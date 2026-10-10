@@ -1,0 +1,52 @@
+---
+# Health checks plus an RBD write/read smoke test on a temporary image. Safe to run any time.
+- name: Verify cluster
+  hosts: admin
+  become: true
+  gather_facts: false
+  tasks:
+    - name: ceph status (waits up to 3 minutes for HEALTH_OK)
+      ansible.builtin.command: ceph status --format json
+      register: status_json
+      changed_when: false
+      retries: 18
+      delay: 10
+      until: (status_json.stdout | from_json).health.status == 'HEALTH_OK'
+      failed_when: false
+      when: inventory_hostname == admin_node
+
+    - name: Health, quorum, OSDs, PGs
+      ansible.builtin.assert:
+        that:
+          - s.health.status == 'HEALTH_OK'
+          - s.quorum_names | length == groups['ceph'] | map('extract', hostvars, 'ceph_labels') | select('contains', 'mon') | list | length
+          - s.osdmap.num_up_osds == s.osdmap.num_osds and s.osdmap.num_in_osds == s.osdmap.num_osds and s.osdmap.num_osds > 0
+          - s.pgmap.pgs_by_state | rejectattr('state_name', 'equalto', 'active+clean') | list | length == 0
+        success_msg: >-
+          HEALTH_OK; quorum {{ s.quorum_names | join(',') }}; {{ s.osdmap.num_osds }} OSDs up/in; {{ s.pgmap.num_pgs }} PGs active+clean
+        fail_msg: "Not healthy: {{ s.health }}"
+      vars:
+        s: "{{ status_json.stdout | from_json }}"
+      when: inventory_hostname == admin_node
+
+    - name: RBD smoke test
+      ansible.builtin.shell: |
+        set -euo pipefail
+        image="verify-$(date +%s)"
+        trap 'rbd rm "{{ verify_pool }}/$image" >/dev/null 2>&1 || true' EXIT
+        rbd create "{{ verify_pool }}/$image" --size 128M
+        rbd bench --io-type write --io-size 4M --io-total 64M "{{ verify_pool }}/$image" | tail -n 1
+        rbd bench --io-type read --io-size 4M --io-total 64M "{{ verify_pool }}/$image" | tail -n 1
+        echo "RBD_SMOKE_OK {{ verify_pool }}/$image"
+      args:
+        executable: /bin/bash
+      vars:
+        verify_pool: "{{ (ceph_pools | selectattr('application', 'defined') | selectattr('application', 'equalto', 'rbd') | map(attribute='name') | first) | default('rbd') }}"
+      register: smoke
+      changed_when: false
+      when: inventory_hostname == admin_node
+
+    - name: Smoke test output
+      ansible.builtin.debug:
+        var: smoke.stdout_lines
+      when: inventory_hostname == admin_node

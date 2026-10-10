@@ -1,0 +1,5 @@
+# Two managers (active + standby) on hosts labelled "mgr".
+service_type: mgr
+placement:
+  label: mgr
+  count: 2

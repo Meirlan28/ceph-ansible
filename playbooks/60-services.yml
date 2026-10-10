@@ -1,0 +1,59 @@
+---
+# Cluster configuration first (OSD memory must be set before OSDs start), then every service spec in
+# services/*.yml. ceph orch apply is declarative: re-applying an unchanged spec changes nothing.
+- name: Configuration and services
+  hosts: admin
+  become: true
+  gather_facts: false
+  tasks:
+    - name: ceph config set {{ item.who }} {{ item.option }}
+      ceph.cephadm.ceph_config:
+        action: set
+        who: "{{ item.who }}"
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      loop: "{{ ceph_config }}"
+      loop_control:
+        label: "{{ item.who }} {{ item.option }}={{ item.value }}"
+      when: inventory_hostname == admin_node
+
+    - name: ceph orch apply {{ item | basename }}
+      ceph.cephadm.ceph_orch_apply:
+        spec: "{{ lookup('ansible.builtin.file', item) }}"
+      loop: "{{ query('ansible.builtin.fileglob', playbook_dir ~ '/../services/*.yml') | sort }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      when: inventory_hostname == admin_node
+
+    # The orchestrator now deploys daemons asynchronously; wait for the result.
+    - name: Wait for all mons in quorum
+      ansible.builtin.command: ceph quorum_status --format json
+      register: quorum
+      changed_when: false
+      retries: 60
+      delay: 10
+      until: (quorum.stdout | from_json).quorum_names | length == groups['ceph'] | map('extract', hostvars, 'ceph_labels') | select('contains', 'mon') | list | length
+      when: inventory_hostname == admin_node
+
+    - name: Wait for one OSD per osd-labelled host, all up and in
+      ansible.builtin.command: ceph osd stat --format json
+      register: osd_stat
+      changed_when: false
+      retries: 90
+      delay: 10
+      until: >-
+        (osd_stat.stdout | from_json).num_osds | int >= groups['ceph'] | map('extract', hostvars, 'ceph_labels') | select('contains', 'osd') | list | length
+        and (osd_stat.stdout | from_json).num_up_osds == (osd_stat.stdout | from_json).num_osds
+        and (osd_stat.stdout | from_json).num_in_osds == (osd_stat.stdout | from_json).num_osds
+      when: inventory_hostname == admin_node
+
+    - name: Services
+      ansible.builtin.command: ceph orch ls
+      register: orch_ls
+      changed_when: false
+      when: inventory_hostname == admin_node
+
+    - name: Show services
+      ansible.builtin.debug:
+        var: orch_ls.stdout_lines
+      when: inventory_hostname == admin_node

@@ -1,0 +1,4 @@
+# Monitors on every host labelled "mon" (odd number: 3 or 5). Applied with ceph orch apply.
+service_type: mon
+placement:
+  label: mon

@@ -1,0 +1,5 @@
+---
+# Upstream: remove the cluster from every host and wipe OSD devices. DATA LOSS.
+#   ansible-playbook playbooks/99-purge.yml -e fsid=$(sudo ceph fsid)
+- name: cephadm-ansible purge cluster
+  ansible.builtin.import_playbook: ../collections/ansible_collections/ceph/cephadm/cephadm-purge-cluster.yml

@@ -1,39 +1,10 @@
 ---
-# Full Ceph deployment with cephadm. Idempotent: re-running converges an existing cluster.
-#   ansible-playbook -i inventory/<file>.yml site.yml -e ceph_dashboard_password=...
-- name: Select bootstrap host
-  ansible.builtin.import_playbook: target.yml
-
-- name: Prerequisites on all Ceph hosts
-  hosts: mons:mgrs:osds
-  become: true
-  roles:
-    - prereqs
-
-- name: Bootstrap the first monitor
-  hosts: ceph_bootstrap
-  become: true
-  roles:
-    - bootstrap
-
-- name: Add hosts and declare services
-  hosts: mons:mgrs:osds
-  become: true
-  roles:
-    - hosts
-
-- name: Converge services, dashboard, pools
-  hosts: ceph_bootstrap
-  become: true
-  roles:
-    - services
-    - pools
-  post_tasks:
-    - name: ceph -s
-      ansible.builtin.command: "{{ ceph_shell }} ceph -s"
-      register: status
-      changed_when: false
-
-    - name: Result
-      ansible.builtin.debug:
-        msg: "{{ status.stdout_lines + ['', 'Dashboard: https://' ~ ceph_public_ip ~ ':8443  user: ' ~ ceph_dashboard_user] }}"
+# Whole cluster, in order. Every step is idempotent, so site.yml can be re-run at any time.
+# The runbook (docs/RUNBOOK.md) runs the same playbooks one by one and explains each.
+- ansible.builtin.import_playbook: playbooks/10-preflight.yml
+- ansible.builtin.import_playbook: playbooks/20-time.yml
+- ansible.builtin.import_playbook: playbooks/30-bootstrap.yml
+- ansible.builtin.import_playbook: playbooks/40-ssh-key.yml
+- ansible.builtin.import_playbook: playbooks/50-hosts.yml
+- ansible.builtin.import_playbook: playbooks/60-services.yml
+- ansible.builtin.import_playbook: playbooks/70-pools.yml

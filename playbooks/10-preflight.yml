@@ -1,0 +1,5 @@
+---
+# Upstream cephadm-ansible preflight on every host: Ceph repo (ceph_origin/ceph_release), EPEL on
+# non-RHEL, cephadm + ceph-common, podman, lvm2, chrony, firewalld.
+- name: cephadm-ansible preflight
+  ansible.builtin.import_playbook: ../collections/ansible_collections/ceph/cephadm/cephadm-preflight.yml

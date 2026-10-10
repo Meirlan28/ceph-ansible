@@ -1,4 +1,7 @@
+# Installed by `ansible-galaxy collection install -r requirements.yml`
+/collections/
+ansible.log
 *.retry
-inventory/*.local.yml
-secrets*.yml
-secrets*.json
+# Unencrypted secrets must never be committed; vault.yml is committed only encrypted.
+*.plain.yml
+.vault-pass*

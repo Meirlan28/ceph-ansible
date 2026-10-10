@@ -1,0 +1,22 @@
+# Managed by Ansible (ceph-cluster, playbooks/00-time.yml).
+{% if inventory_hostname == ntp_server %}
+# Time source for the cluster: follows the upstream pool and serves the other nodes.
+{% for s in ntp_upstream %}
+pool {{ s }} iburst
+{% endfor %}
+{% for h in groups['ceph'] if h != inventory_hostname %}
+allow {{ hostvars[h].ceph_ip }}
+{% endfor %}
+local stratum 10
+makestep 1.0 3
+{% else %}
+# Follow the cluster time source over the LAN; poll often, step when more than 100 ms off.
+server {{ hostvars[ntp_server].ceph_ip }} iburst minpoll 2 maxpoll 4 prefer
+makestep 0.1 -1
+{% endif %}
+driftfile /var/lib/chrony/drift
+rtcsync
+keyfile /etc/chrony.keys
+ntsdumpdir /var/lib/chrony
+leapsectz right/UTC
+logdir /var/log/chrony
