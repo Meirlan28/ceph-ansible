@@ -17,6 +17,14 @@ ceph_cluster_network: ""                     # optional separate replication net
 ceph_mgr_count: 2
 ceph_monitoring_stack: false                 # Prometheus/Grafana/Alertmanager: RAM hungry
 
+# ---- Time ---------------------------------------------------------------------------------------
+# Monitors tolerate only 50 ms of clock difference (mon_clock_drift_allowed). Independent internet NTP
+# on VMs jitters more than that, so by default the bootstrap host serves time to the other Ceph hosts
+# over the LAN and follows the upstream pool itself. Set ceph_ntp_mode: system to keep chrony as is.
+ceph_ntp_mode: cluster
+ceph_ntp_upstream:
+  - pool.ntp.org
+
 # ---- Dashboard --------------------------------------------------------------------------------
 ceph_dashboard_enabled: true
 ceph_dashboard_user: admin

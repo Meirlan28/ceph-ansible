@@ -25,21 +25,45 @@
       - python3
     state: present
 
+- name: chrony configuration (bootstrap host serves time to the Ceph hosts)
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony.conf
+    mode: "0644"
+    backup: true
+  when: ceph_ntp_mode == 'cluster'
+  notify: Restart chronyd
+
+- name: NTP service open on the time server
+  ansible.builtin.shell: |
+    set -euo pipefail
+    systemctl is-active --quiet firewalld || { echo inactive; exit 0; }
+    if firewall-cmd --permanent --query-service=ntp >/dev/null; then echo present; exit 0; fi
+    firewall-cmd --permanent --add-service=ntp >/dev/null && firewall-cmd --reload >/dev/null && echo added
+  args:
+    executable: /bin/bash
+  register: ntp_fw
+  changed_when: "'added' in ntp_fw.stdout"
+  when: ceph_ntp_mode == 'cluster' and inventory_hostname == ceph_bootstrap_host
+
 - name: chronyd enabled and running
   ansible.builtin.systemd_service:
     name: chronyd
     state: started
     enabled: true
 
-- name: Wait for time synchronisation (monitors warn on clock skew)
-  ansible.builtin.command: chronyc waitsync 12 0.5
+- name: Apply chrony changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait until the clock is within 10 ms of its source (monitors allow 50 ms between each other)
+  ansible.builtin.command: chronyc waitsync 30 0.01
   register: waitsync
   changed_when: false
   failed_when: false
 
 - name: Clock not synchronised
   ansible.builtin.debug:
-    msg: "chrony did not report sync on {{ inventory_hostname }}; expect HEALTH_WARN clock skew if NTP is unreachable"
+    msg: "chrony did not converge on {{ inventory_hostname }}; expect HEALTH_WARN MON_CLOCK_SKEW until it does"
   when: waitsync.rc != 0
 
 - name: Firewall ports (mon, osd/mgr range, dashboard, mgr metrics)
