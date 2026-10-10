@@ -43,6 +43,9 @@ ceph_config:
   - { who: osd, key: osd_memory_target_autotune, value: "false" }
   - { who: osd, key: osd_memory_target, value: "1073741824" }   # 1 GiB (minimum is 896 MiB)
   - { who: mon, key: mon_allow_pool_delete, value: "true" }
+  # Re-check hosts every minute instead of 10: after a lab restart a host that was still booting
+  # otherwise keeps CEPHADM_HOST_CHECK_FAILED for up to 10 minutes.
+  - { who: mgr, key: mgr/cephadm/host_check_interval, value: "60" }
 ceph_config_extra: []
 
 # ---- Pools ----------------------------------------------------------------------------------------
@@ -52,6 +55,7 @@ ceph_pools:
 # ---- Waiting --------------------------------------------------------------------------------------
 ceph_wait_retries: 90
 ceph_wait_delay: 10
+ceph_verify_retries: 18                      # verify.yml waits up to 3 min for HEALTH_OK
 
 # Working directory on the bootstrap host, mounted into `cephadm shell` as /mnt/lab.
 ceph_workdir: /root/lab-ceph

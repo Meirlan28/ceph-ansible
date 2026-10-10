@@ -12,10 +12,15 @@
         expected_osds: >-
           {% set ns = namespace(n=0) %}{% for h in groups['osds'] %}{% set d = hostvars[h].ceph_osd_devices | default([]) | length %}{% set ns.n = ns.n + (d if d > 0 else 1) %}{% endfor %}{{ ns.n }}
 
-    - name: Status
+    # A freshly started cluster passes through transient warnings; give it a few minutes.
+    - name: Status (waits for HEALTH_OK)
       ansible.builtin.command: "{{ ceph_shell }} ceph status --format json"
       register: status_json
       changed_when: false
+      retries: "{{ ceph_verify_retries }}"
+      delay: "{{ ceph_wait_delay }}"
+      until: status_json.rc == 0 and (status_json.stdout | from_json).health.status == 'HEALTH_OK'
+      failed_when: status_json.rc != 0
 
     - name: Health, quorum and OSDs
       ansible.builtin.assert:
