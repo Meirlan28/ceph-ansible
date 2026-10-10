@@ -56,7 +56,7 @@ Everything else (release, pools, `ceph config` options, timeouts) is in `group_v
 
 | Play | Hosts | Steps |
 |---|---|---|
-| prereqs | all | Ceph repo, `cephadm` RPM, podman, lvm2, chrony (waits for sync), firewalld services, image pull |
+| prereqs | all | Ceph repo, `cephadm` RPM, podman, lvm2, chrony (bootstrap host serves NTP to the others; waits for < 10 ms), firewalld services, image pull |
 | bootstrap | first mon | `cephadm bootstrap --mon-ip ...` (once), `ceph config set` only for values that differ |
 | hosts | all | cephadm root SSH key, `cluster-spec.yml` (hosts + labels, mon, mgr, OSD per host) → `ceph orch apply -i` |
 | services | first mon | wait for mon quorum and all OSDs up/in, dashboard module, self-signed cert, admin user |
@@ -66,6 +66,16 @@ Everything else (release, pools, `ceph config` options, timeouts) is in `group_v
 temporary image. `purge.yml`: `cephadm rm-cluster --zap-osds` on every host (needs `-e confirm_purge=yes`).
 
 Ceph CLI on any node: `sudo cephadm shell -- ceph -s` (all hosts carry the `_admin` label).
+
+## Notes from testing
+
+- **Clock skew.** Mons allow 50 ms of drift. VMs syncing to internet NTP independently drifted 50-120 ms apart
+  (MON_CLOCK_SKEW). With `ceph_ntp_mode: cluster` (default) the bootstrap host is the time source for the
+  others (LAN, polled every 4-16 s, step when > 100 ms); offsets stay at a few ms. `system` keeps chrony as is.
+- **Host order.** Ansible does not keep host order inside groups, so `mons[0]` is not stable between runs; the
+  bootstrap host is `ceph_bootstrap_host` (default: alphabetically first mon), exposed as group `ceph_bootstrap`.
+- **Restarts.** cephadm re-checks hosts every 60 s here (default 600 s), so a host that was still booting does
+  not keep CEPHADM_HOST_CHECK_FAILED; `verify.yml` waits up to 3 minutes for HEALTH_OK.
 
 ## Changing the cluster
 
