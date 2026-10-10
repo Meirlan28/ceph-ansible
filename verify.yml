@@ -1,7 +1,10 @@
 ---
 # Read-mostly checks of a deployed cluster plus an RBD write smoke test (image removed afterwards).
+- name: Select bootstrap host
+  ansible.builtin.import_playbook: target.yml
+
 - name: Verify Ceph
-  hosts: mons[0]
+  hosts: ceph_bootstrap
   become: true
   tasks:
     - name: Expected OSD count

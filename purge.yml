@@ -1,6 +1,9 @@
 ---
 # Removes the Ceph cluster from all hosts and wipes OSD disks (DATA LOSS), so site.yml can start
 # from scratch without recreating the machines. Requires -e confirm_purge=yes.
+- name: Select bootstrap host
+  ansible.builtin.import_playbook: target.yml
+
 - name: Purge Ceph
   hosts: mons:mgrs:osds
   become: true

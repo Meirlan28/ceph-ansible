@@ -1,6 +1,9 @@
 ---
 # Full Ceph deployment with cephadm. Idempotent: re-running converges an existing cluster.
 #   ansible-playbook -i inventory/<file>.yml site.yml -e ceph_dashboard_password=...
+- name: Select bootstrap host
+  ansible.builtin.import_playbook: target.yml
+
 - name: Prerequisites on all Ceph hosts
   hosts: mons:mgrs:osds
   become: true
@@ -8,7 +11,7 @@
     - prereqs
 
 - name: Bootstrap the first monitor
-  hosts: mons[0]
+  hosts: ceph_bootstrap
   become: true
   roles:
     - bootstrap
@@ -20,7 +23,7 @@
     - hosts
 
 - name: Converge services, dashboard, pools
-  hosts: mons[0]
+  hosts: ceph_bootstrap
   become: true
   roles:
     - services

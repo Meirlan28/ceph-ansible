@@ -7,9 +7,11 @@ ceph_repo_url: "https://download.ceph.com/rpm-{{ ceph_release }}/el{{ ansible_fa
 ceph_repo_gpgkey: "https://download.ceph.com/keys/release.asc"
 
 # ---- Topology ----------------------------------------------------------------------------------
-# Inventory groups: mons, mgrs, osds. The first mon bootstraps the cluster.
-ceph_hosts: "{{ (groups['mons'] | default([])) | union(groups['mgrs'] | default([])) | union(groups['osds'] | default([])) }}"
-ceph_bootstrap_host: "{{ groups['mons'][0] }}"
+# Inventory groups: mons, mgrs, osds.
+ceph_hosts: "{{ ((groups['mons'] | default([])) + (groups['mgrs'] | default([])) + (groups['osds'] | default([]))) | unique | sort }}"
+# Ansible does not guarantee host order inside groups, so never use mons[0]: the bootstrap host is
+# the alphabetically first mon unless set explicitly. It must stay the same for the life of a cluster.
+ceph_bootstrap_host: "{{ groups['mons'] | sort | first }}"
 ceph_public_ip: "{{ ansible_host | default(inventory_hostname) }}"   # address Ceph daemons bind to
 ceph_cluster_network: ""                     # optional separate replication network (CIDR)
 ceph_mgr_count: 2

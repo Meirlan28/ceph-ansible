@@ -1,0 +1,19 @@
+---
+# Imported first by every playbook: puts the bootstrap host into group 'ceph_bootstrap' so later
+# plays can target it (patterns like mons[0] depend on group order, which Ansible does not keep).
+- name: Select bootstrap host
+  hosts: mons:mgrs:osds
+  gather_facts: false
+  tasks:
+    - name: Bootstrap host is a mon
+      ansible.builtin.assert:
+        that: ceph_bootstrap_host in groups['mons']
+        fail_msg: "ceph_bootstrap_host={{ ceph_bootstrap_host }} is not in group mons"
+        quiet: true
+      run_once: true
+
+    - name: Group ceph_bootstrap
+      ansible.builtin.group_by:
+        key: ceph_bootstrap
+      when: inventory_hostname == ceph_bootstrap_host
+      changed_when: false
