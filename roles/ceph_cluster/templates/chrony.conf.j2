@@ -10,9 +10,11 @@ allow {{ hostvars[h].ceph_ip }}
 local stratum 10
 makestep 1.0 3
 {% else %}
-# Follow the cluster time source over the LAN; poll often, step when more than 100 ms off.
+# Follow the cluster time source over the LAN and poll it often. Step only at startup (> 1 s), otherwise
+# slew: on a busy VM host single NTP samples can be off by hundreds of ms (the server VM was not
+# scheduled), and stepping on those would make the clock jump back and forth.
 server {{ hostvars[ntp_server].ceph_ip }} iburst minpoll 2 maxpoll 4 prefer
-makestep 0.1 -1
+makestep 1.0 3
 {% endif %}
 driftfile /var/lib/chrony/drift
 rtcsync
