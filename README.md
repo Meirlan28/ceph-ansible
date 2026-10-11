@@ -17,6 +17,7 @@ playbooks that call the upstream modules (`ceph.cephadm.cephadm_bootstrap`, `cep
 
 ```
 requirements.yml            pinned collections: ceph.cephadm (git v5.0.3), ansible.posix, community.general
+requirements.txt            ansible-core 2.16.14 for the controller's Python virtual environment
 ansible.cfg                 inventory, ./collections, SSH options, ansible.log
 inventory/lab/
   hosts.yml                 nodes, ceph_ip, ceph_labels; groups ceph / admin / clients
@@ -38,9 +39,36 @@ site.yml                    10 → 70 in order
 
 ## Short version
 
+### Windows
+
+Ansible нельзя штатно запустить как управляющий узел в Windows. Используйте WSL 2 (например, Ubuntu):
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+После установки откройте Ubuntu (WSL), перейдите в проект и установите зависимости в Linux-среде:
+
+```bash
+sudo apt update
+sudo apt install -y python3-venv python3-pip git
+cd /mnt/e/ceph-cluster
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+ansible-galaxy collection install -r requirements.yml
+```
+
+Дальше запускайте `ansible-playbook` из этого же WSL-терминала с активированным `.venv`.
+
+### Linux
+
 On the admin node, as the deployment user, from the repo directory:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ansible-galaxy collection install -r requirements.yml
 export ANSIBLE_VAULT_PASSWORD_FILE=~/.vault-pass                # file with the vault password, mode 600
 ansible-vault create inventory/lab/group_vars/all/vault.yml   # vault_ceph_dashboard_password: ...

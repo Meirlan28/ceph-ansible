@@ -5,3 +5,4 @@ ansible.log
 # Unencrypted secrets must never be committed; vault.yml is committed only encrypted.
 *.plain.yml
 .vault-pass*
+/.venv/

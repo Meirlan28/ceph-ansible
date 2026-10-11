@@ -87,11 +87,32 @@ ansible --version | head -3    # config file = /home/ceph-admin/ceph-cluster/ans
 
 ## 3. Зависимости
 
+На Windows Ansible как управляющий узел нативно не поддерживается. Используй WSL 2, например Ubuntu.
+В PowerShell установи WSL (если он ещё не установлен):
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Открой Ubuntu из меню Пуск, затем выполни в терминале WSL:
+
 ```bash
+sudo apt update
+sudo apt install -y python3-venv python3-pip git
+cd /mnt/e/ceph-cluster
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ansible-galaxy collection install -r requirements.yml
 ```
 
-Что произошло: в `./collections` поставились
+Если проект находится на другом диске Windows, замени `/mnt/e/ceph-cluster` на соответствующий путь WSL
+(например, `C:\ceph-cluster` доступен как `/mnt/c/ceph-cluster`). Все команды Ansible запускай из WSL,
+не из PowerShell.
+
+Для управляющей ноды нужен Python 3.10 или новее. `requirements.txt` устанавливает
+`ansible-core==2.16.14` в локальное виртуальное окружение проекта, не затрагивая системный Python.
+`requirements.yml` отдельно устанавливает Ansible-коллекции в `./collections`:
 - `ceph.cephadm` — это и есть cephadm-ansible (на Galaxy не опубликован, поэтому ставится из git по тегу `v5.0.3`,
   релиз ветки `tentacle` под Ceph 20.2). Его модули дальше вызываются по полному имени `ceph.cephadm.*`;
 - `ansible.posix`, `community.general` — нужны плейбукам cephadm-ansible. Версия community.general ограничена `<11`:
