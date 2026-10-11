@@ -4,8 +4,8 @@
 {% for s in ntp_upstream %}
 pool {{ s }} iburst
 {% endfor %}
-{% for h in ansible_play_hosts_all if h != inventory_hostname %}
-allow {{ hostvars[h].ceph_ip }}
+{% for a in ntp_allow %}
+allow {{ a }}
 {% endfor %}
 local stratum 10
 makestep 1.0 3

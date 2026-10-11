@@ -1,5 +1,5 @@
 ---
-# Same time source for every host: ntp_server follows ntp_upstream and serves the others.
+# Same time source for every host: ntp_server follows ntp_upstream and serves the others (ntp_allow).
 - name: chrony.conf
   ansible.builtin.template:
     src: chrony.conf.j2
@@ -19,6 +19,34 @@
 - name: Apply chrony changes now
   ansible.builtin.meta: flush_handlers
 
-- name: Wait until the clock is within 10 ms of its source
-  ansible.builtin.command: chronyc waitsync 30 0.01
-  changed_when: false
+# Fail fast: a selected source and |offset| < ntp_max_offset within ntp_wait_retries x 5 s (60 s by default).
+# chronyc -c tracking: field 0 = reference ID (00000000 = no source), field 4 = current offset in seconds.
+- name: Time source selected and offset below {{ (ntp_max_offset | float * 1000) | int }} ms
+  block:
+    - name: chronyc tracking
+      ansible.builtin.command: chronyc -c tracking
+      register: ceph_cluster_tracking
+      changed_when: false
+      retries: "{{ ntp_wait_retries }}"
+      delay: 5
+      until: >-
+        ceph_cluster_tracking.rc == 0
+        and ceph_cluster_tracking.stdout.split(',')[0] != '00000000'
+        and (ceph_cluster_tracking.stdout.split(',')[4] | float | abs) < (ntp_max_offset | float)
+  rescue:
+    - name: Time sources (diagnostics)
+      ansible.builtin.command: chronyc -n sources
+      register: ceph_cluster_sources
+      changed_when: false
+      failed_when: false
+
+    - name: No usable time source
+      ansible.builtin.fail:
+        msg:
+          - "{{ inventory_hostname }}: no selected time source with offset < {{ ntp_max_offset }} s after {{ ntp_wait_retries | int * 5 }} s"
+          - "tracking: {{ ceph_cluster_tracking.stdout | default('n/a') }}"
+          - "sources: {{ ceph_cluster_sources.stdout_lines | default([]) }}"
+          - >-
+            Reach 0 / '^?' for {{ hostvars[ntp_server].ceph_ip | default(ntp_server) }} means {{ ntp_server }} does not answer
+            this host: its chrony.conf must allow it (ntp_allow; run the play with {{ ntp_server }} included) and firewalld
+            there must allow 'ntp'. On {{ ntp_server }} itself it means no upstream in ntp_upstream is reachable.

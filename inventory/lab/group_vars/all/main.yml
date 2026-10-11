@@ -23,3 +23,7 @@ ceph_cluster_network: 192.168.230.0/24   # OSD replication (back) network: VMwar
 # ---- Dashboard ----------------------------------------------------------------------------------
 ceph_dashboard_user: admin
 ceph_dashboard_password: "{{ vault_ceph_dashboard_password }}"   # group_vars/all/vault.yml (ansible-vault)
+
+# ---- Time ---------------------------------------------------------------------------------------
+# ceph-1 serves time to the whole public subnet, so new nodes need no change on ceph-1.
+ntp_allow: [192.168.228.0/24]

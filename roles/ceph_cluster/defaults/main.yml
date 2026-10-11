@@ -28,6 +28,13 @@ ceph_dashboard_user: admin
 ceph_ntp_mode: cluster
 ntp_upstream: [pool.ntp.org]
 ntp_server: "{{ admin_node }}"
+# Who may query ntp_server (chrony "allow": addresses or CIDRs). Default: ceph_ip of every host in
+# ceph_inventory_group from the inventory, independent of --limit. Set a subnet to cover future hosts.
+ceph_inventory_group: ceph
+ntp_allow: "{{ groups[ceph_inventory_group] | default([]) | map('extract', hostvars) | map(attribute='ceph_ip', default='') | select | list }}"
+# Fail fast: wait at most ntp_wait_retries x 5 s for a selected source and |offset| < ntp_max_offset (s).
+ntp_wait_retries: 12
+ntp_max_offset: 0.05
 
 # ---- ceph config set (applied before OSDs are created) ---------------------------------------------
 ceph_config:
@@ -59,8 +66,9 @@ ceph_pools:
   - { name: rbd, pg_num: 32, application: rbd }
 
 # ---- Waiting ---------------------------------------------------------------------------------------
-# Deployment waits (mon quorum, OSDs up/in, HEALTH_OK after pools): up to retries x delay = 15 min.
-ceph_wait_retries: 90
+# Deployment waits (mon quorum, OSDs up/in, HEALTH_OK after pools): up to retries x delay = 5 min.
+# In the lab each of them finishes in 1-3 min; anything longer is a problem worth failing on.
+ceph_wait_retries: 30
 ceph_wait_delay: 10
-# Verification wait for HEALTH_OK: short on purpose (18 x 10 s = 3 min), a check should fail fast.
-ceph_verify_retries: 18
+# Verification wait for HEALTH_OK: 6 x 10 s = 1 min, a check should fail fast.
+ceph_verify_retries: 6

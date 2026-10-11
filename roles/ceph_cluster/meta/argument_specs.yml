@@ -19,6 +19,10 @@ argument_specs:
       ceph_ntp_mode: {type: str, choices: [cluster, system], description: Manage chrony (cluster) or leave it (system).}
       ntp_upstream: {type: list, elements: str, description: Upstream NTP servers of ntp_server.}
       ntp_server: {type: str, description: Host that serves time to the others in cluster mode.}
+      ceph_inventory_group: {type: str, description: Inventory group of all Ceph hosts (default allow list).}
+      ntp_allow: {type: list, elements: str, description: Addresses/CIDRs allowed to query ntp_server.}
+      ntp_wait_retries: {type: int, description: Time check retries (5 s apart).}
+      ntp_max_offset: {type: float, description: Max accepted clock offset in seconds.}
       ceph_config:
         type: list
         elements: dict
