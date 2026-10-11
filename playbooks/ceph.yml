@@ -5,5 +5,8 @@
 - name: Ceph cluster
   hosts: ceph
   become: true
+  # Cluster-wide steps depend on admin_node and on every host: if one fails, stop everything instead of
+  # carrying on with a partial cluster (e.g. bootstrap skipped because admin_node already failed).
+  any_errors_fatal: true
   roles:
     - role: ceph_cluster
