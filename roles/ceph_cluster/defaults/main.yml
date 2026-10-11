@@ -59,5 +59,8 @@ ceph_pools:
   - { name: rbd, pg_num: 32, application: rbd }
 
 # ---- Waiting ---------------------------------------------------------------------------------------
+# Deployment waits (mon quorum, OSDs up/in, HEALTH_OK after pools): up to retries x delay = 15 min.
 ceph_wait_retries: 90
 ceph_wait_delay: 10
+# Verification wait for HEALTH_OK: short on purpose (18 x 10 s = 3 min), a check should fail fast.
+ceph_verify_retries: 18

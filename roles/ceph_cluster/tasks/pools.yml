@@ -37,5 +37,5 @@
   changed_when: false
   retries: "{{ ceph_wait_retries }}"
   delay: "{{ ceph_wait_delay }}"
-  until: (ceph_cluster_health.stdout | from_json).status == 'HEALTH_OK'
+  until: ceph_cluster_health.rc == 0 and (ceph_cluster_health.stdout | from_json).status == 'HEALTH_OK'
   when: inventory_hostname == admin_node

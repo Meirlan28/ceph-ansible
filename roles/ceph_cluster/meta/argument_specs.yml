@@ -36,5 +36,6 @@ argument_specs:
           name: {type: str, required: true}
           pg_num: {type: int, default: 32}
           application: {type: str}
-      ceph_wait_retries: {type: int}
-      ceph_wait_delay: {type: int}
+      ceph_wait_retries: {type: int, description: Retries of deployment waits (mons, OSDs, HEALTH_OK).}
+      ceph_wait_delay: {type: int, description: Seconds between retries (deployment and verification).}
+      ceph_verify_retries: {type: int, description: Retries of the verification wait for HEALTH_OK.}

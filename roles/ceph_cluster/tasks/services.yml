@@ -26,6 +26,7 @@
   retries: "{{ ceph_wait_retries }}"
   delay: "{{ ceph_wait_delay }}"
   until: >-
+    ceph_cluster_quorum.rc == 0 and
     (ceph_cluster_quorum.stdout | from_json).quorum_names | length
     == ansible_play_hosts_all | map('extract', hostvars, 'ceph_labels') | select('contains', 'mon') | list | length
   when: inventory_hostname == admin_node
@@ -37,6 +38,7 @@
   retries: "{{ ceph_wait_retries }}"
   delay: "{{ ceph_wait_delay }}"
   until: >-
+    ceph_cluster_osd_stat.rc == 0 and
     (ceph_cluster_osd_stat.stdout | from_json).num_osds | int
     >= ansible_play_hosts_all | map('extract', hostvars, 'ceph_labels') | select('contains', 'osd') | list | length
     and (ceph_cluster_osd_stat.stdout | from_json).num_up_osds == (ceph_cluster_osd_stat.stdout | from_json).num_osds
