@@ -1,0 +1,28 @@
+---
+# First mon + mgr, /etc/ceph (conf, admin keyring, ceph.pub) on admin_node.
+- name: Dashboard password supplied
+  ansible.builtin.assert:
+    that: ceph_dashboard_password is defined and ceph_dashboard_password | length >= 8
+    fail_msg: "Set ceph_dashboard_password (8+ characters), e.g. vault_ceph_dashboard_password in an ansible-vault file"
+    quiet: true
+  when: inventory_hostname == admin_node
+
+# cephadm-ansible v5.0.3: the module's own "already bootstrapped" check looks for
+# /var/lib/ceph/ceph.conf, but cephadm writes /etc/ceph/ceph.conf, so check here.
+- name: Existing cluster on admin_node
+  ansible.builtin.stat:
+    path: /etc/ceph/ceph.conf
+  register: ceph_cluster_conf
+  when: inventory_hostname == admin_node
+
+- name: cephadm bootstrap
+  ceph.cephadm.cephadm_bootstrap:
+    mon_ip: "{{ ceph_ip }}"
+    image: "{{ ceph_image }}"
+    ssh_user: "{{ cephadm_ssh_user }}"
+    initial_dashboard_user: "{{ ceph_dashboard_user }}"
+    initial_dashboard_password: "{{ ceph_dashboard_password }}"
+    skip_monitoring_stack: "{{ not ceph_monitoring_stack }}"
+    cluster_network: "{{ ceph_cluster_network | default(omit, true) }}"
+  no_log: true                         # the dashboard password is a module argument
+  when: inventory_hostname == admin_node and not ceph_cluster_conf.stat.exists

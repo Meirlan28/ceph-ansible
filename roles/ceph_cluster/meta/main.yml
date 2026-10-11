@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: ceph_cluster
+  author: VMwareLab
+  description: Ceph cluster day-1 with cephadm, on top of cephadm-ansible (ceph.cephadm collection)
+  license: Apache-2.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions: ["9", "10"]
+dependencies: []

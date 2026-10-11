@@ -1,4 +1,0 @@
-# Crash collector on every host (cephadm default, declared explicitly so the spec set is complete).
-service_type: crash
-placement:
-  host_pattern: "*"

@@ -1,5 +1,0 @@
----
-# Upstream: copy cephadm's SSH public key (cephadm get-pub-key on admin_node) to cephadm_ssh_user
-# on every host, so the orchestrator can manage them.
-- name: cephadm-ansible distribute SSH key
-  ansible.builtin.import_playbook: ../collections/ansible_collections/ceph/cephadm/cephadm-distribute-ssh-key.yml

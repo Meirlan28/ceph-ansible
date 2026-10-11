@@ -1,10 +1,10 @@
-# Managed by Ansible (ceph-cluster, playbooks/00-time.yml).
+# Managed by Ansible (role ceph_cluster, tasks/time.yml).
 {% if inventory_hostname == ntp_server %}
 # Time source for the cluster: follows the upstream pool and serves the other nodes.
 {% for s in ntp_upstream %}
 pool {{ s }} iburst
 {% endfor %}
-{% for h in groups['ceph'] if h != inventory_hostname %}
+{% for h in ansible_play_hosts_all if h != inventory_hostname %}
 allow {{ hostvars[h].ceph_ip }}
 {% endfor %}
 local stratum 10

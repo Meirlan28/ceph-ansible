@@ -1,10 +1,4 @@
 ---
-# Whole cluster, in order. Every step is idempotent, so site.yml can be re-run at any time.
-# The runbook (docs/RUNBOOK.md) runs the same playbooks one by one and explains each.
+# Whole cluster: upstream preflight (packages, repo) + role ceph_cluster. Idempotent, re-run any time.
 - ansible.builtin.import_playbook: playbooks/10-preflight.yml
-- ansible.builtin.import_playbook: playbooks/20-time.yml
-- ansible.builtin.import_playbook: playbooks/30-bootstrap.yml
-- ansible.builtin.import_playbook: playbooks/40-ssh-key.yml
-- ansible.builtin.import_playbook: playbooks/50-hosts.yml
-- ansible.builtin.import_playbook: playbooks/60-services.yml
-- ansible.builtin.import_playbook: playbooks/70-pools.yml
+- ansible.builtin.import_playbook: playbooks/ceph.yml

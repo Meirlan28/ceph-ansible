@@ -1,0 +1,24 @@
+---
+# Same time source for every host: ntp_server follows ntp_upstream and serves the others.
+- name: chrony.conf
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony.conf
+    mode: "0644"
+    backup: true
+  notify: Restart chronyd
+
+- name: NTP open on the time server
+  ansible.posix.firewalld:
+    service: ntp
+    permanent: true
+    immediate: true
+    state: enabled
+  when: inventory_hostname == ntp_server
+
+- name: Apply chrony changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait until the clock is within 10 ms of its source
+  ansible.builtin.command: chronyc waitsync 30 0.01
+  changed_when: false

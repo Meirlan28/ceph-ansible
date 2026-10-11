@@ -1,0 +1,40 @@
+---
+argument_specs:
+  main:
+    short_description: Bootstrap and converge a cephadm Ceph cluster
+    description:
+      - Run on every storage node after the cephadm-ansible preflight playbook.
+      - Phases (tags) ceph_time, ceph_bootstrap, ceph_ssh_key, ceph_hosts, ceph_services, ceph_pools, ceph_verify.
+    options:
+      admin_node: {type: str, description: Bootstrap/admin host (inventory name).}
+      cephadm_ssh_user: {type: str, description: User the orchestrator uses on every host (passwordless sudo).}
+      ceph_release: {type: str, description: Ceph version, also selects the container image.}
+      ceph_image: {type: str, description: Container image for bootstrap.}
+      ceph_ip: {type: str, description: Address Ceph daemons bind to on this host.}
+      ceph_labels: {type: list, elements: str, description: Orchestrator labels of this host.}
+      ceph_cluster_network: {type: str, description: Optional separate replication network (CIDR).}
+      ceph_monitoring_stack: {type: bool, description: Deploy Prometheus/Grafana/Alertmanager at bootstrap.}
+      ceph_dashboard_user: {type: str, description: Initial dashboard admin user.}
+      ceph_dashboard_password: {type: str, no_log: true, description: Initial dashboard password (required for bootstrap).}
+      ceph_ntp_mode: {type: str, choices: [cluster, system], description: Manage chrony (cluster) or leave it (system).}
+      ntp_upstream: {type: list, elements: str, description: Upstream NTP servers of ntp_server.}
+      ntp_server: {type: str, description: Host that serves time to the others in cluster mode.}
+      ceph_config:
+        type: list
+        elements: dict
+        description: ceph config set entries.
+        options:
+          who: {type: str, required: true}
+          option: {type: str, required: true}
+          value: {type: str, required: true}
+      ceph_service_specs: {type: list, elements: dict, description: cephadm service specs applied with ceph orch apply.}
+      ceph_pools:
+        type: list
+        elements: dict
+        description: Pools to create.
+        options:
+          name: {type: str, required: true}
+          pg_num: {type: int, default: 32}
+          application: {type: str}
+      ceph_wait_retries: {type: int}
+      ceph_wait_delay: {type: int}

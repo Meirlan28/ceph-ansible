@@ -77,11 +77,12 @@ ansible --version | head -3    # config file = /home/ceph-admin/ceph-cluster/ans
 | `ansible.cfg` | инвентарь по умолчанию, `collections_path=./collections`, SSH-настройки, лог `ansible.log` |
 | `requirements.yml` | **запиненные** зависимости: cephadm-ansible v5.0.3, ansible.posix, community.general |
 | `inventory/lab/hosts.yml` | ноды, их IP (`ceph_ip`), метки (`ceph_labels`), группы `ceph`, `admin`, `clients` |
-| `inventory/lab/group_vars/all/main.yml` | версия Ceph, образ, пользователь, NTP, `ceph config`, пулы |
+| `inventory/lab/group_vars/all/main.yml` | только то, что зависит от окружения: пользователь, admin_node, версия Ceph, сети, дашборд |
 | `inventory/lab/group_vars/all/vault.yml` | секреты, зашифрованы ansible-vault (создашь на шаге 4) |
-| `services/*.yml` | **спецификации сервисов cephadm** (mon, mgr, crash, osd) — источник правды о демонах |
-| `playbooks/NN-*.yml` | шаги по порядку; 10/40/99 — обёртки над плейбуками cephadm-ansible |
-| `site.yml` | все шаги подряд (когда уже понимаешь, что они делают) |
+| `roles/ceph_cluster/` | **роль** со всей логикой поверх cephadm-ansible: фазы time → bootstrap → ssh_key → hosts → services → pools → verify (`tasks/`), дефолты с комментариями (`defaults/main.yml`, там же **спецификации сервисов cephadm** `ceph_service_specs`, `ceph_config`, пулы), проверка входных переменных (`meta/argument_specs.yml`) |
+| `playbooks/ceph.yml` | применяет роль к группе `ceph`; фазы запускаются тегами `ceph_*` |
+| `playbooks/10-preflight.yml`, `99-purge.yml` | обёртки над плейбуками cephadm-ansible (пакеты; снос) |
+| `site.yml` | preflight + роль целиком (когда уже понимаешь, что делает каждая фаза) |
 
 ---
 
@@ -172,7 +173,7 @@ ansible all -m command -a 'id'          # become: true → uid=0(root)
 ```
 
 `hosts.yml`: имена нод должны совпадать с их `hostname` (cephadm это проверяет). `ceph_labels` — метки, по которым
-`services/*.yml` размещают демоны: mon на всех трёх, mgr на ceph-1/2, osd на всех.
+`ceph_service_specs` (defaults роли) размещают демоны: mon на всех трёх, mgr на ceph-1/2, osd на всех.
 
 ---
 
@@ -199,7 +200,7 @@ ceph --version            # 20.2.4 tentacle (stable)
 ## 7. Время
 
 ```bash
-ansible-playbook playbooks/20-time.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_time
 ```
 
 Мониторы допускают расхождение часов 50 мс. В проде все ноды смотрят в одни корпоративные NTP. В лабе ВМ,
@@ -213,7 +214,7 @@ ceph-1 раздаёт время остальным (`ntp_server`), а сам х
 ## 8. Bootstrap
 
 ```bash
-ansible-playbook playbooks/30-bootstrap.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_bootstrap
 ```
 
 Модуль `ceph.cephadm.cephadm_bootstrap` = `cephadm bootstrap --mon-ip 192.168.228.21 --ssh-user ceph-admin
@@ -237,14 +238,16 @@ sudo ceph config get mgr mgr/cephadm/ssh_user
 
 ---
 
-## 9. SSH-ключ оркестратора (cephadm-ansible)
+## 9. SSH-ключ оркестратора
 
 ```bash
-ansible-playbook playbooks/40-ssh-key.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_ssh_key
 ```
 
-Upstream `cephadm-distribute-ssh-key.yml`: берёт публичный ключ (`cephadm get-pub-key` на `admin_node`) и добавляет его
-в `authorized_keys` пользователя `cephadm_ssh_user` (ceph-admin) на всех нодах. Без этого mgr не сможет управлять ceph-2/3.
+Фаза роли `tasks/ssh_key.yml` делает то же, что upstream `cephadm-distribute-ssh-key.yml`: берёт публичный ключ
+(`ceph cephadm get-pub-key` на `admin_node`), добавляет его в `authorized_keys` пользователя `cephadm_ssh_user`
+(ceph-admin) на всех нодах и делает `ceph cephadm set-user`. В роли, а не отдельным плейбуком — чтобы роль шла
+целиком от bootstrap до пулов одним прогоном. Без этого mgr не сможет управлять ceph-2/3.
 
 Проверка: `ssh ceph-2 'grep -c ceph ~/.ssh/authorized_keys'` и после следующего шага
 `sudo ceph cephadm check-host ceph-2`.
@@ -254,7 +257,7 @@ Upstream `cephadm-distribute-ssh-key.yml`: берёт публичный клю�
 ## 10. Хосты
 
 ```bash
-ansible-playbook playbooks/50-hosts.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_hosts
 ```
 
 `ceph.cephadm.ceph_orch_host` = `ceph orch host add <имя> <ip> --labels ...` для каждой ноды из группы `ceph`
@@ -268,21 +271,21 @@ ansible-playbook playbooks/50-hosts.yml
 ## 11. Конфигурация и сервисы
 
 ```bash
-ansible-playbook playbooks/60-services.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_services
 ```
 
 1. `ceph.cephadm.ceph_config` — `ceph config set` для списка `ceph_config` (память OSD 1 GiB и т.п.). Ставится
    **до** создания OSD, чтобы они сразу стартовали с нужным лимитом.
-2. `ceph.cephadm.ceph_orch_apply` — `ceph orch apply -i` для каждого `services/*.yml`. Это декларативно: ты описываешь
+2. `ceph.cephadm.ceph_orch_apply` — `ceph orch apply` для каждой спецификации из `ceph_service_specs`. Это декларативно: ты описываешь
    "mon на всех хостах с меткой mon", оркестратор сам добивается этого состояния и держит его.
 3. Ожидание: кворум из всех mon, OSD по числу osd-хостов в состоянии up/in.
 
-OSD-спека (`services/osd.yml`) — drive group: на хостах с меткой osd взять все *доступные* диски. Доступный = без
+OSD-спека (последний элемент `ceph_service_specs` в `roles/ceph_cluster/defaults/main.yml`) — drive group: на хостах с меткой osd взять все *доступные* диски. Доступный = без
 разделов, LVM и ФС (в лабе это пустой диск 10 GB; системный диск недоступен). Перед применением в проде смотрят:
 
 ```bash
 sudo ceph orch device ls                                    # какие диски cephadm видит и годны ли они
-sudo ceph orch apply -i services/osd.yml --dry-run          # что он с ними сделает
+sudo ceph orch ls osd --export > /tmp/osd.yml && sudo ceph orch apply -i /tmp/osd.yml --dry-run   # что он сделает
 ```
 
 Проверка:
@@ -298,7 +301,7 @@ sudo ceph osd tree              # 3 OSD, по одному на хост, up
 ## 12. Пулы
 
 ```bash
-ansible-playbook playbooks/70-pools.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_pools
 ```
 
 Создаёт недостающие пулы из `ceph_pools` (`rbd`, 32 PG), включает приложение и делает `rbd pool init`, затем ждёт
@@ -309,7 +312,7 @@ HEALTH_OK. Проверка: `sudo ceph osd pool ls detail`, `sudo ceph -s` → 
 ## 13. Проверка и дашборд
 
 ```bash
-ansible-playbook playbooks/90-verify.yml
+ansible-playbook playbooks/ceph.yml --tags ceph_verify
 ```
 
 HEALTH_OK, кворум, OSD up/in, все PG active+clean, RBD bench на временном образе.
@@ -317,7 +320,7 @@ HEALTH_OK, кворум, OSD up/in, все PG active+clean, RBD bench на вр�
 Дашборд: https://192.168.228.21:8443 (сертификат самоподписанный), логин `admin`, пароль из vault.
 При первом входе дашборд потребует сменить пароль — так ведёт себя `cephadm bootstrap` по умолчанию.
 
-Повторный запуск любого шага (или всего `ansible-playbook site.yml`) ничего не меняет: `changed=0`.
+Повторный запуск любого шага (или всей роли `ansible-playbook playbooks/ceph.yml`, или `site.yml`) ничего не меняет: `changed=0`.
 
 Время на 3 ВМ (проверено): preflight ~2 мин, time 15 с, bootstrap ~1.5 мин, ssh-key 5 с, hosts 20 с,
 services ~3 мин, pools 30 с — около 7 минут на всё; `site.yml` на уже развёрнутом кластере — около минуты.
@@ -328,8 +331,8 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 
 | Задача | Как |
 |---|---|
-| Поменять настройку Ceph | правка `ceph_config` в group_vars → `playbooks/60-services.yml` |
-| Поменять размещение демонов | правка `services/*.yml` или `ceph_labels` → `50-hosts.yml` и `60-services.yml` |
+| Поменять настройку Ceph | переопредели `ceph_config` в group_vars (целиком список, дефолт — в defaults роли) → `playbooks/ceph.yml --tags ceph_services` |
+| Поменять размещение демонов | переопредели `ceph_service_specs` в group_vars или поменяй `ceph_labels` → `--tags ceph_hosts,ceph_services` |
 | Добавить ноду | VMwareLab: нода в `clusters\ceph\cluster.json` → `lab.cmd up ceph`; здесь: нода в `hosts.yml` → `10`, `20`, `40`, `50`, `60` с `--limit` новой ноды где возможно |
 | Вывести ноду | `sudo ceph orch host drain ceph-3` → дождаться `ceph orch ps ceph-3` пусто → `sudo ceph orch host rm ceph-3` → убрать из инвентаря; потом из lab (`up --prune`) |
 | Обновить Ceph | `sudo ceph orch upgrade start --image quay.io/ceph/ceph:vX.Y.Z`, следить `ceph orch upgrade status`; потом поднять `ceph_release` и прогнать preflight (пакеты cephadm/ceph-common) |
@@ -347,7 +350,7 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 | Модули импортируют `ansible.module_utils.ceph_common` по-старому | `No module named 'module_utils'` | `module_utils = ...` в `ansible.cfg` |
 | Проверка "уже bootstrapped" смотрит `/var/lib/ceph/ceph.conf`, а cephadm пишет `/etc/ceph` | повторный bootstrap падает | свой `stat /etc/ceph/ceph.conf` перед модулем |
 | `dashboard_user/password` — устаревшие алиасы, модуль их молча игнорирует | дашборд со случайным паролем | `initial_dashboard_user/password`, `skip_monitoring_stack` |
-| `ceph_orch_apply` сравнивает спеку по полям с `ceph orch ls --export` | OSD-спека "changed" на каждом запуске | в `services/osd.yml` явно `filter_logic`, `objectstore` |
+| `ceph_orch_apply` сравнивает спеку по полям с `ceph orch ls --export` | OSD-спека "changed" на каждом запуске | в OSD-спеке (`ceph_service_specs`) явно `filter_logic`, `objectstore` |
 | Purge читает `client_group`, который задаёт только preflight | `'client_group' is undefined` | `client_group: clients` в group_vars |
 
 ## Работа с кодом дальше
@@ -360,9 +363,10 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 ## Отладка
 
 ```bash
-ansible-playbook playbooks/60-services.yml -v          # -vvv: SSH и аргументы модулей
-ansible-playbook playbooks/60-services.yml --check --diff
-ansible-playbook site.yml --ask-vault-pass --start-at-task "ceph orch apply osd.yml"
+ansible-playbook playbooks/ceph.yml --tags ceph_services -v   # -vvv: SSH и аргументы модулей
+ansible-playbook playbooks/ceph.yml --check --diff
+ansible-playbook playbooks/ceph.yml --start-at-task "ceph orch apply osd"
+ansible-playbook playbooks/ceph.yml --list-tasks --list-tags    # что и в каком порядке сделает роль
 less ansible.log                                        # лог всех запусков (ansible.cfg)
 sudo ceph health detail
 sudo ceph log last cephadm                              # что делал оркестратор

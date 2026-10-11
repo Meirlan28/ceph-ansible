@@ -1,0 +1,9 @@
+---
+# Role ceph_cluster on every storage node, after playbooks/10-preflight.yml.
+# Whole cluster:        ansible-playbook playbooks/ceph.yml
+# One phase (tags):     --tags ceph_time | ceph_bootstrap | ceph_ssh_key | ceph_hosts | ceph_services | ceph_pools | ceph_verify
+- name: Ceph cluster
+  hosts: ceph
+  become: true
+  roles:
+    - role: ceph_cluster

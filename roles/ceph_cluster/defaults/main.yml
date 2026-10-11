@@ -1,0 +1,63 @@
+---
+# Role ceph_cluster: day-1 of a cephadm Ceph cluster on top of cephadm-ansible (ceph.cephadm modules).
+# Apply it to every storage node (e.g. hosts: ceph); admin-only steps run on admin_node.
+# admin_node, cephadm_ssh_user, ceph_release are shared with the upstream cephadm-ansible playbooks
+# (preflight, purge), so they keep upstream names; set them in the inventory.
+
+# ---- Admin node and orchestrator access ------------------------------------------------------------
+admin_node: "{{ groups['admin'] | first }}"          # bootstrap host; better set explicitly
+cephadm_ssh_user: "{{ ansible_user | default('root') }}"
+
+# ---- Release ---------------------------------------------------------------------------------------
+ceph_release: "20.2.4"
+ceph_image: "quay.io/ceph/ceph:v{{ ceph_release }}"
+
+# ---- Per host (host_vars / inventory) --------------------------------------------------------------
+ceph_ip: "{{ ansible_host | default(inventory_hostname) }}"   # address Ceph daemons bind to
+ceph_labels: []                                              # placement labels: mon, mgr, osd, ...
+
+# ---- Bootstrap -------------------------------------------------------------------------------------
+ceph_cluster_network: ""                 # optional replication network (CIDR)
+ceph_monitoring_stack: false             # Prometheus/Grafana/Alertmanager
+ceph_dashboard_user: admin
+# ceph_dashboard_password: required for bootstrap (keep it in ansible-vault)
+
+# ---- Time ------------------------------------------------------------------------------------------
+# cluster: ntp_server follows ntp_upstream and serves the other nodes (mons allow 50 ms of drift).
+# system:  leave chrony as configured by the OS (e.g. corporate NTP already in place).
+ceph_ntp_mode: cluster
+ntp_upstream: [pool.ntp.org]
+ntp_server: "{{ admin_node }}"
+
+# ---- ceph config set (applied before OSDs are created) ---------------------------------------------
+ceph_config:
+  - { who: osd, option: osd_memory_target_autotune, value: "false" }
+  - { who: osd, option: osd_memory_target, value: "1073741824" }
+  - { who: mon, option: mon_allow_pool_delete, value: "true" }
+  - { who: mgr, option: mgr/cephadm/host_check_interval, value: "60" }
+
+# ---- cephadm service specs (ceph orch apply) -------------------------------------------------------
+# Same format as `ceph orch ls --export`. ceph_orch_apply compares field by field with that export,
+# so cephadm defaults (osd: filter_logic, objectstore) are written out to keep re-runs unchanged.
+ceph_service_specs:
+  - service_type: mon
+    placement: {label: mon}
+  - service_type: mgr
+    placement: {label: mgr, count: 2}
+  - service_type: crash
+    placement: {host_pattern: "*"}
+  - service_type: osd
+    service_id: default_drive_group
+    placement: {label: osd}
+    spec:
+      data_devices: {all: true}          # every available (blank) disk on osd-labelled hosts
+      filter_logic: AND
+      objectstore: bluestore
+
+# ---- Pools -----------------------------------------------------------------------------------------
+ceph_pools:
+  - { name: rbd, pg_num: 32, application: rbd }
+
+# ---- Waiting ---------------------------------------------------------------------------------------
+ceph_wait_retries: 90
+ceph_wait_delay: 10

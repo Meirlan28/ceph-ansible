@@ -1,0 +1,30 @@
+---
+# Phases in order; each can be run alone with its tag (see docs/RUNBOOK.md).
+- name: Time synchronisation
+  ansible.builtin.import_tasks: time.yml
+  when: ceph_ntp_mode == 'cluster'
+  tags: [ceph_time]
+
+- name: Bootstrap on admin_node
+  ansible.builtin.import_tasks: bootstrap.yml
+  tags: [ceph_bootstrap]
+
+- name: Orchestrator SSH key on every host
+  ansible.builtin.import_tasks: ssh_key.yml
+  tags: [ceph_ssh_key]
+
+- name: Orchestrator hosts and labels
+  ansible.builtin.import_tasks: hosts.yml
+  tags: [ceph_hosts]
+
+- name: Configuration and service specs
+  ansible.builtin.import_tasks: services.yml
+  tags: [ceph_services]
+
+- name: Pools
+  ansible.builtin.import_tasks: pools.yml
+  tags: [ceph_pools]
+
+- name: Verification
+  ansible.builtin.import_tasks: verify.yml
+  tags: [ceph_verify]

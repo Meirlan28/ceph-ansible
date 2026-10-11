@@ -1,0 +1,49 @@
+---
+# Health assertions plus an RBD write/read smoke test on a temporary image. Read-only for the cluster.
+- name: ceph status (waits up to 3 minutes for HEALTH_OK)
+  ansible.builtin.command: ceph status --format json
+  register: ceph_cluster_status
+  changed_when: false
+  retries: 18
+  delay: 10
+  until: (ceph_cluster_status.stdout | from_json).health.status == 'HEALTH_OK'
+  failed_when: false
+  when: inventory_hostname == admin_node
+
+- name: Health, quorum, OSDs, PGs
+  ansible.builtin.assert:
+    that:
+      - s.health.status == 'HEALTH_OK'
+      - s.quorum_names | length == ansible_play_hosts_all | map('extract', hostvars, 'ceph_labels') | select('contains', 'mon') | list | length
+      - s.osdmap.num_osds > 0 and s.osdmap.num_up_osds == s.osdmap.num_osds and s.osdmap.num_in_osds == s.osdmap.num_osds
+      - s.pgmap.pgs_by_state | rejectattr('state_name', 'equalto', 'active+clean') | list | length == 0
+    success_msg: >-
+      HEALTH_OK; quorum {{ s.quorum_names | join(',') }}; {{ s.osdmap.num_osds }} OSDs up/in; {{ s.pgmap.num_pgs }} PGs active+clean
+    fail_msg: "Not healthy: {{ s.health }}"
+  vars:
+    s: "{{ ceph_cluster_status.stdout | from_json }}"
+  when: inventory_hostname == admin_node
+
+- name: RBD smoke test
+  ansible.builtin.shell: |
+    set -euo pipefail
+    image="verify-$(date +%s)"
+    trap 'rbd rm "{{ pool }}/$image" >/dev/null 2>&1 || true' EXIT
+    rbd create "{{ pool }}/$image" --size 128M
+    rbd bench --io-type write --io-size 4M --io-total 64M "{{ pool }}/$image" | tail -n 1
+    rbd bench --io-type read --io-size 4M --io-total 64M "{{ pool }}/$image" | tail -n 1
+    echo "RBD_SMOKE_OK {{ pool }}/$image"
+  args:
+    executable: /bin/bash
+  vars:
+    pool: "{{ ceph_pools | selectattr('application', 'defined') | selectattr('application', 'equalto', 'rbd') | map(attribute='name') | first }}"
+  register: ceph_cluster_smoke
+  changed_when: false
+  when: >-
+    inventory_hostname == admin_node and
+    ceph_pools | selectattr('application', 'defined') | selectattr('application', 'equalto', 'rbd') | list | length > 0
+
+- name: RBD smoke test output
+  ansible.builtin.debug:
+    var: ceph_cluster_smoke.stdout_lines
+  when: ceph_cluster_smoke is not skipped and inventory_hostname == admin_node

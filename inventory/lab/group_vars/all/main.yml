@@ -1,43 +1,25 @@
 ---
+# Environment-specific values only; everything else has a default in roles/ceph_cluster/defaults/main.yml
+# (ceph_config, ceph_service_specs, ceph_pools, NTP, ...). Override any of them here.
+
 # ---- Access -------------------------------------------------------------------------------------
 # Ansible and cephadm both log in as this user (passwordless sudo, provided by the OS/infra layer).
 ansible_user: ceph-admin
 ansible_become: true
 cephadm_ssh_user: ceph-admin
+admin_node: ceph-1                     # bootstrap host; also read by cephadm-ansible playbooks
 # cephadm-ansible v5.0.3 purge playbook reads client_group, which only its preflight defines.
 client_group: clients
-admin_node: ceph-1                              # bootstrap host; cephadm-ansible playbooks expect this name
 
-# ---- Release (pin everything) ---------------------------------------------------------------------
-# Package repo: https://download.ceph.com/rpm-<release>/el<major>/  (cephadm, ceph-common)
+# ---- Release (pin everything) -----------------------------------------------------------------------
+# Package repo for preflight: https://download.ceph.com/rpm-<release>/el<major>/ (cephadm, ceph-common).
+# The role derives the container image from it: quay.io/ceph/ceph:v<release>.
 ceph_origin: community
-ceph_release: "20.2.4"                          # Tentacle
-ceph_image: "quay.io/ceph/ceph:v{{ ceph_release }}"
+ceph_release: "20.2.4"                 # Tentacle
 
 # ---- Networks -----------------------------------------------------------------------------------
-# Public network = where clients and mons talk (the mon IP is ceph_ip of the bootstrap host).
-# Optional separate replication network for OSDs.
-ceph_cluster_network: ""                        # e.g. 192.168.230.0/24
-
-# ---- Time ---------------------------------------------------------------------------------------
-# Mons tolerate 50 ms of clock difference. Production: every node points at the same internal NTP
-# servers. Lab: the admin node follows the internet pool and serves time to the other nodes.
-ntp_upstream: [pool.ntp.org]
-ntp_server: "{{ admin_node }}"
+ceph_cluster_network: ""               # e.g. 192.168.230.0/24 for a separate replication network
 
 # ---- Dashboard ----------------------------------------------------------------------------------
 ceph_dashboard_user: admin
-# ceph_dashboard_password comes from group_vars/all/vault.yml (ansible-vault encrypted)
-ceph_dashboard_password: "{{ vault_ceph_dashboard_password }}"
-
-# ---- Cluster configuration (ceph config set) ------------------------------------------------------
-# Applied before OSDs are created. Values sized for 3 GB VMs running mon + mgr + osd each.
-ceph_config:
-  - { who: osd, option: osd_memory_target_autotune, value: "false" }
-  - { who: osd, option: osd_memory_target, value: "1073741824" }              # 1 GiB
-  - { who: mon, option: mon_allow_pool_delete, value: "true" }
-  - { who: mgr, option: mgr/cephadm/host_check_interval, value: "60" }       # default 600 s
-
-# ---- Pools --------------------------------------------------------------------------------------
-ceph_pools:
-  - { name: rbd, pg_num: 32, application: rbd }
+ceph_dashboard_password: "{{ vault_ceph_dashboard_password }}"   # group_vars/all/vault.yml (ansible-vault)
