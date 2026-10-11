@@ -27,6 +27,29 @@
     s: "{{ ceph_cluster_status.stdout | from_json }}"
   when: inventory_hostname == admin_node
 
+- name: Every OSD replicates over the cluster network (back address in ceph_cluster_network)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ceph osd metadata --format json | python3 -c '
+    import ipaddress, json, re, sys
+    net = ipaddress.ip_network(sys.argv[1])
+    osds = json.load(sys.stdin)
+    addrs = lambda m: re.findall(r"v[12]:([0-9.]+):", m["back_addr"])
+    bad = {m["id"]: m["back_addr"] for m in osds if not all(ipaddress.ip_address(a) in net for a in addrs(m))}
+    print("bad OSDs: %s" % bad if bad else "CLUSTER_NETWORK_OK %d OSDs, back addresses in %s" % (len(osds), net))
+    sys.exit(1 if bad else 0)
+    ' {{ ceph_cluster_network }}
+  args:
+    executable: /bin/bash
+  register: ceph_cluster_backnet
+  changed_when: false
+  when: inventory_hostname == admin_node and ceph_cluster_network | length > 0
+
+- name: Cluster network result
+  ansible.builtin.debug:
+    var: ceph_cluster_backnet.stdout
+  when: inventory_hostname == admin_node and ceph_cluster_network | length > 0
+
 - name: RBD smoke test
   ansible.builtin.shell: |
     set -euo pipefail

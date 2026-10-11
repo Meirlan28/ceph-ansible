@@ -51,6 +51,25 @@
 for h in ceph-1 ceph-2 ceph-3; do ssh $h 'hostname; sudo -n true && echo sudo ok'; done
 ```
 
+### Две сети: public и cluster
+
+| Сеть | Подсеть | NIC | Кто ходит |
+|---|---|---|---|
+| public | 192.168.228.0/24 (VMnet1, сеть lab `lab`) | eth1 | клиенты, mon, mgr, дашборд, front-адрес OSD |
+| cluster | 192.168.230.0/24 (VMnet2, сеть lab `cluster`) | eth2 | только OSD ↔ OSD: репликация, recovery, heartbeat (back-адрес OSD) |
+
+Так делают в проде: трафик восстановления после отказа диска не забивает сеть, по которой ходят клиенты.
+Сеть задаётся одной переменной `ceph_cluster_network` (inventory, group_vars): bootstrap передаёт её в
+`cephadm bootstrap --cluster-network`, роль держит `ceph config set global cluster_network` (для кластера, развёрнутого
+без неё, ставит и перезапускает OSD), фаза verify проверяет, что back-адрес каждого OSD лежит в этой сети.
+
+Проверка после раскатки:
+
+```bash
+sudo ceph config get osd cluster_network
+sudo ceph osd metadata 0 | grep -E '"(front|back)_addr"'   # front 192.168.228.x, back 192.168.230.x
+```
+
 ---
 
 ## 2. Код на admin node

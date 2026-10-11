@@ -10,6 +10,24 @@
     label: "{{ item.who }} {{ item.option }}={{ item.value }}"
   when: inventory_hostname == admin_node
 
+# Replication (cluster) network. A fresh cluster gets it from bootstrap (--cluster-network); this also
+# covers clusters bootstrapped without it. OSDs pick their back address from it only when they start.
+- name: ceph config set global cluster_network
+  ceph.cephadm.ceph_config:
+    action: set
+    who: global
+    option: cluster_network
+    value: "{{ ceph_cluster_network }}"
+  register: ceph_cluster_net_config
+  when: inventory_hostname == admin_node and ceph_cluster_network | length > 0
+
+- name: Restart OSD services so they bind to the new cluster network
+  ansible.builtin.command: ceph orch restart osd.{{ item.service_id }}
+  loop: "{{ ceph_service_specs | selectattr('service_type', 'equalto', 'osd') | list }}"
+  loop_control:
+    label: "osd.{{ item.service_id }}"
+  when: inventory_hostname == admin_node and ceph_cluster_net_config is changed
+
 - name: ceph orch apply {{ item.service_type }}
   ceph.cephadm.ceph_orch_apply:
     spec: "{{ item | to_nice_yaml }}"

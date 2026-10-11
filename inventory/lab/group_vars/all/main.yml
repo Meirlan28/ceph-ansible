@@ -18,7 +18,7 @@ ceph_origin: community
 ceph_release: "20.2.4"                 # Tentacle
 
 # ---- Networks -----------------------------------------------------------------------------------
-ceph_cluster_network: ""               # e.g. 192.168.230.0/24 for a separate replication network
+ceph_cluster_network: 192.168.230.0/24   # OSD replication (back) network: VMwareLab network "cluster" (VMnet2), eth2
 
 # ---- Dashboard ----------------------------------------------------------------------------------
 ceph_dashboard_user: admin
