@@ -1,5 +1,5 @@
 ---
-- name: ceph config set {{ item.who }} {{ item.option }}
+- name: Ceph config set | {{ item.who ~ ' ' ~ item.option ~ '=' ~ item.value }}
   ceph.cephadm.ceph_config:
     action: set
     who: "{{ item.who }}"
@@ -12,7 +12,7 @@
 
 # Replication (cluster) network. A fresh cluster gets it from bootstrap (--cluster-network); this also
 # covers clusters bootstrapped without it. OSDs pick their back address from it only when they start.
-- name: ceph config set global cluster_network
+- name: Ceph config set global cluster_network
   ceph.cephadm.ceph_config:
     action: set
     who: global
@@ -27,8 +27,9 @@
   loop_control:
     label: "osd.{{ item.service_id }}"
   when: inventory_hostname == admin_node and ceph_cluster_net_config is changed
+  changed_when: true
 
-- name: ceph orch apply {{ item.service_type }}
+- name: Ceph orch apply {{ item.service_type }}
   ceph.cephadm.ceph_orch_apply:
     spec: "{{ item | to_nice_yaml }}"
   loop: "{{ ceph_service_specs }}"

@@ -5,12 +5,13 @@
   changed_when: false
   when: inventory_hostname == admin_node
 
-- name: ceph osd pool create {{ item.name }}
+- name: Ceph osd pool create {{ item.name }}
   ansible.builtin.command: ceph osd pool create {{ item.name }} {{ item.pg_num | default(32) }}
   loop: "{{ ceph_pools }}"
   loop_control:
     label: "{{ item.name }}"
   when: inventory_hostname == admin_node and item.name not in (ceph_cluster_pools.stdout | from_json)
+  changed_when: true
 
 - name: Pool applications
   ansible.builtin.command: ceph osd pool application get {{ item.name }} --format json
@@ -30,6 +31,7 @@
   loop_control:
     label: "{{ item.item.name }}={{ item.item.application }}"
   when: inventory_hostname == admin_node and item.item.application not in (item.stdout | from_json)
+  changed_when: true
 
 - name: Wait for HEALTH_OK
   ansible.builtin.command: ceph health --format json

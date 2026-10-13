@@ -49,7 +49,7 @@ All with defaults and comments in [defaults/main.yml](defaults/main.yml); valida
 | `ceph_config` | OSD memory 1 GiB, no autotune, pool delete allowed, host check 60 s |
 | `ceph_service_specs` | mon (label mon), mgr ×2 (label mgr), crash (all), osd drive group (label osd, all blank disks) |
 | `ceph_pools` | `rbd`, 32 PG, application rbd |
-| `ceph_wait_retries` / `ceph_wait_delay` / `ceph_verify_retries` | 30 / 10 s / 6 — deployment waits up to 5 min, verification up to 1 min |
+| `ceph_wait_retries` / `ceph_wait_delay` / `ceph_verify_retries` | 12 / 5 s / 18 — deployment waits up to 1 min, verification up to 90 s |
 
 ## cephadm-ansible v5.0.3 workarounds inside the role
 

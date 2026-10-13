@@ -1,9 +1,9 @@
 ---
 # Health assertions plus an RBD write/read smoke test on a temporary image. Read-only for the cluster.
-# Shorter wait than deployment (ceph_verify_retries): a freshly started cluster passes through transient
+# Own retry count (ceph_verify_retries): a freshly started cluster passes through transient
 # warnings, but a check should report "not healthy" in minutes. Not reaching HEALTH_OK does not fail this
 # task (failed_when only on CLI errors), so the assert below can show what is wrong.
-- name: ceph status (waits for HEALTH_OK)
+- name: Ceph status (waits for HEALTH_OK)
   ansible.builtin.command: ceph status --format json
   register: ceph_cluster_status
   changed_when: false

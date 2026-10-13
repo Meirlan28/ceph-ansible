@@ -1,7 +1,7 @@
 ---
 # Equivalent of upstream cephadm-distribute-ssh-key.yml: authorize cephadm's public key for
 # cephadm_ssh_user on every host and make the orchestrator use that user.
-- name: cephadm public key
+- name: Cephadm public key
   ansible.builtin.command: ceph cephadm get-pub-key
   register: ceph_cluster_pubkey
   changed_when: false
@@ -13,12 +13,14 @@
     user: "{{ cephadm_ssh_user }}"
     key: "{{ ceph_cluster_pubkey.stdout }}"
 
-- name: Orchestrator SSH user
-  ansible.builtin.command: ceph config get mgr mgr/cephadm/ssh_user
+- name: Get orchestrator SSH user
+  ansible.builtin.command:
+    cmd: ceph cephadm get-user
   register: ceph_cluster_ssh_user
   changed_when: false
   when: inventory_hostname == admin_node
 
-- name: ceph cephadm set-user {{ cephadm_ssh_user }}
+- name: Ceph cephadm set-user {{ cephadm_ssh_user }}
   ansible.builtin.command: ceph cephadm set-user {{ cephadm_ssh_user }}
   when: inventory_hostname == admin_node and ceph_cluster_ssh_user.stdout != cephadm_ssh_user
+  changed_when: true

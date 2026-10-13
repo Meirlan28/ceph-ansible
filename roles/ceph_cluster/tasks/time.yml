@@ -1,6 +1,6 @@
 ---
 # Same time source for every host: ntp_server follows ntp_upstream and serves the others (ntp_allow).
-- name: chrony.conf
+- name: Chrony.conf
   ansible.builtin.template:
     src: chrony.conf.j2
     dest: /etc/chrony.conf

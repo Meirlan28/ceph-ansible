@@ -5,7 +5,7 @@
 # (preflight, purge), so they keep upstream names; set them in the inventory.
 
 # ---- Admin node and orchestrator access ------------------------------------------------------------
-admin_node: "{{ groups['admin'] | first }}"          # bootstrap host; better set explicitly
+admin_node: "{{ groups['admin'] | first }}" # bootstrap host; better set explicitly
 cephadm_ssh_user: "{{ ansible_user | default('root') }}"
 
 # ---- Release ---------------------------------------------------------------------------------------
@@ -13,12 +13,12 @@ ceph_release: "20.2.4"
 ceph_image: "quay.io/ceph/ceph:v{{ ceph_release }}"
 
 # ---- Per host (host_vars / inventory) --------------------------------------------------------------
-ceph_ip: "{{ ansible_host | default(inventory_hostname) }}"   # address Ceph daemons bind to
-ceph_labels: []                                              # placement labels: mon, mgr, osd, ...
+ceph_ip: "{{ ansible_host | default(inventory_hostname) }}" # address Ceph daemons bind to
+ceph_labels: [] # placement labels: mon, mgr, osd, ...
 
 # ---- Bootstrap -------------------------------------------------------------------------------------
-ceph_cluster_network: ""                 # optional replication network (CIDR)
-ceph_monitoring_stack: false             # Prometheus/Grafana/Alertmanager
+ceph_cluster_network: "" # optional replication network (CIDR)
+ceph_monitoring_stack: false # Prometheus/Grafana/Alertmanager
 ceph_dashboard_user: admin
 # ceph_dashboard_password: required for bootstrap (keep it in ansible-vault)
 
@@ -48,16 +48,16 @@ ceph_config:
 # so cephadm defaults (osd: filter_logic, objectstore) are written out to keep re-runs unchanged.
 ceph_service_specs:
   - service_type: mon
-    placement: {label: mon}
+    placement: { label: mon }
   - service_type: mgr
-    placement: {label: mgr, count: 2}
+    placement: { label: mgr, count: 2 }
   - service_type: crash
-    placement: {host_pattern: "*"}
+    placement: { host_pattern: "*" }
   - service_type: osd
     service_id: default_drive_group
-    placement: {label: osd}
+    placement: { label: osd }
     spec:
-      data_devices: {all: true}          # every available (blank) disk on osd-labelled hosts
+      data_devices: { all: true } # every available (blank) disk on osd-labelled hosts
       filter_logic: AND
       objectstore: bluestore
 
@@ -66,9 +66,8 @@ ceph_pools:
   - { name: rbd, pg_num: 32, application: rbd }
 
 # ---- Waiting ---------------------------------------------------------------------------------------
-# Deployment waits (mon quorum, OSDs up/in, HEALTH_OK after pools): up to retries x delay = 5 min.
-# In the lab each of them finishes in 1-3 min; anything longer is a problem worth failing on.
-ceph_wait_retries: 30
-ceph_wait_delay: 10
-# Verification wait for HEALTH_OK: 6 x 10 s = 1 min, a check should fail fast.
-ceph_verify_retries: 6
+# Deployment waits (mon quorum, OSDs up/in, HEALTH_OK after pools): up to retries x delay = 1 min.
+ceph_wait_retries: 12
+ceph_wait_delay: 5
+# Verification wait for HEALTH_OK: 18 x 5 s = 90 s.
+ceph_verify_retries: 18
