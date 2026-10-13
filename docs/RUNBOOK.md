@@ -11,7 +11,7 @@
 ```
  Windows (VMwareLab)                 ceph-1  = admin node             ceph-2, ceph-3
  ─────────────────────               ───────────────────────          ──────────────
- lab.cmd up ceph                     • ansible host (здесь запускаем   • storage nodes
+ vmlab up ceph                     • ansible host (здесь запускаем   • storage nodes
    VM, сеть, диски,                    ansible-playbook)
    пользователь ceph-admin,          • bootstrap host (первый mon)
    SSH-доверие ceph-1 → все          • admin host (/etc/ceph/ключ admin)
@@ -19,8 +19,8 @@
 
 | Слой | Чем делается | В проде это |
 |---|---|---|
-| Железо/VM, сеть, диск под OSD | `lab.cmd up ceph` | Terraform / MAAS / закупка серверов |
-| ОС, пользователь `ceph-admin` с sudo, SSH-ключ admin-ноды | `lab.cmd` (provisioning) | kickstart / cloud-init / FreeIPA |
+| Железо/VM, сеть, диск под OSD | `vmlab up ceph` | Terraform / MAAS / закупка серверов |
+| ОС, пользователь `ceph-admin` с sudo, SSH-ключ admin-ноды | `vmlab` (provisioning) | kickstart / cloud-init / FreeIPA |
 | Пакеты, время, кластер Ceph, сервисы, пулы | **этот репозиторий** (ты руками) | Ansible из git (CI, AWX/AAP или с admin-ноды) |
 
 Термины cephadm-ansible:
@@ -37,15 +37,15 @@
 На Windows, из `E:\VMwareLab`:
 
 ```powershell
-.\lab.cmd up ceph        # 3 чистые ноды AlmaLinux 10
-.\lab.cmd verify ceph    # должно быть: DATA_DISK ... BLANK (×3), ADMIN_ACCESS_OK (×3), PASS
-.\lab.cmd ssh ceph-1 --admin
+.\vmlab up ceph        # 3 чистые ноды AlmaLinux 10
+.\vmlab verify ceph    # должно быть: DATA_DISK ... BLANK (×3), ADMIN_ACCESS_OK (×3), PASS
+.\vmlab ssh ceph-1 --admin
 ```
 
-`--admin` входит как `ceph-admin` ключом кластера (`clusters\ceph\pki\admin_ed25519`). Без lab.cmd то же самое:
+`--admin` входит как `ceph-admin` ключом кластера (`clusters\ceph\pki\admin_ed25519`). Без vmlab то же самое:
 `ssh -i E:\VMwareLab\clusters\ceph\pki\admin_ed25519 ceph-admin@192.168.228.21`.
 
-Проверь, что admin-нода видит все ноды по SSH и имеет sudo (это делает и `lab.cmd verify`):
+Проверь, что admin-нода видит все ноды по SSH и имеет sudo (это делает и `vmlab verify`):
 
 ```bash
 for h in ceph-1 ceph-2 ceph-3; do ssh $h 'hostname; sudo -n true && echo sudo ok'; done
@@ -352,10 +352,10 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 |---|---|
 | Поменять настройку Ceph | переопредели `ceph_config` в group_vars (целиком список, дефолт — в defaults роли) → `playbooks/ceph.yml --tags ceph_services` |
 | Поменять размещение демонов | переопредели `ceph_service_specs` в group_vars или поменяй `ceph_labels` → `--tags ceph_hosts,ceph_services` |
-| Добавить ноду | VMwareLab: нода в `clusters\ceph\cluster.json` → `lab.cmd up ceph`; здесь: нода в `hosts.yml` → `10`, `20`, `40`, `50`, `60` с `--limit` новой ноды где возможно |
+| Добавить ноду | VMwareLab: нода в `clusters\ceph\cluster.json` → `vmlab up ceph`; здесь: нода в `hosts.yml` → `10`, `20`, `40`, `50`, `60` с `--limit` новой ноды где возможно |
 | Вывести ноду | `sudo ceph orch host drain ceph-3` → дождаться `ceph orch ps ceph-3` пусто → `sudo ceph orch host rm ceph-3` → убрать из инвентаря; потом из lab (`up --prune`) |
 | Обновить Ceph | `sudo ceph orch upgrade start --image quay.io/ceph/ceph:vX.Y.Z`, следить `ceph orch upgrade status`; потом поднять `ceph_release` и прогнать preflight (пакеты cephadm/ceph-common) |
-| Снести и начать заново | `ansible-playbook playbooks/99-purge.yml -e fsid=$(sudo ceph fsid)` (спросит подтверждение; без вопроса `-e ireallymeanit=yes`). Удаляет кластер, **обнуляет OSD-диски и удаляет пакеты** cephadm/ceph-common → начинать снова с шага 6. Или в лабе `lab.cmd destroy ceph` + `up` (тогда с шага 1) |
+| Снести и начать заново | `ansible-playbook playbooks/99-purge.yml -e fsid=$(sudo ceph fsid)` (спросит подтверждение; без вопроса `-e ireallymeanit=yes`). Удаляет кластер, **обнуляет OSD-диски и удаляет пакеты** cephadm/ceph-common → начинать снова с шага 6. Или в лабе `vmlab destroy ceph` + `up` (тогда с шага 1) |
 
 ## Особенности cephadm-ansible v5.0.3 (на что наткнулись при проверке)
 
