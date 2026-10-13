@@ -1,0 +1,4 @@
+# cephadm service spec, native format (the same as `ceph orch ls --export`).
+service_type: crash
+placement:
+  host_pattern: "*"

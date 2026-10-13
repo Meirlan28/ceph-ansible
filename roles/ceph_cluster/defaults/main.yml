@@ -36,34 +36,19 @@ ntp_allow: "{{ groups[ceph_inventory_group] | default([]) | map('extract', hostv
 ntp_wait_retries: 12
 ntp_max_offset: 0.05
 
-# ---- ceph config set (applied before OSDs are created) ---------------------------------------------
-ceph_config:
-  - { who: osd, option: osd_memory_target_autotune, value: "false" }
-  - { who: osd, option: osd_memory_target, value: "1073741824" }
-  - { who: mon, option: mon_allow_pool_delete, value: "true" }
-  - { who: mgr, option: mgr/cephadm/host_check_interval, value: "60" }
-
-# ---- cephadm service specs (ceph orch apply) -------------------------------------------------------
-# Same format as `ceph orch ls --export`. ceph_orch_apply compares field by field with that export,
-# so cephadm defaults (osd: filter_logic, objectstore) are written out to keep re-runs unchanged.
-ceph_service_specs:
-  - service_type: mon
-    placement: { label: mon }
-  - service_type: mgr
-    placement: { label: mgr, count: 2 }
-  - service_type: crash
-    placement: { host_pattern: "*" }
-  - service_type: osd
-    service_id: default_drive_group
-    placement: { label: osd }
-    spec:
-      data_devices: { all: true } # every available (blank) disk on osd-labelled hosts
-      filter_logic: AND
-      objectstore: bluestore
-
-# ---- Pools -----------------------------------------------------------------------------------------
-ceph_pools:
-  - { name: rbd, pg_num: 32, application: rbd }
+# ---- Desired cluster state: files in the repo, next to the inventory --------------------------------
+# <ceph_state_dir>/services/*.yml  cephadm service specs, native format (as `ceph orch ls --export`)
+# <ceph_state_dir>/config.yml      ceph config:  <who>: {<option>: <value>}
+# <ceph_state_dir>/pools.yml       pools:        <name>: {pg_num: N, application: rbd|cephfs|rgw}
+# The variables below just read those files; set a variable in group_vars only to bypass its file.
+ceph_state_dir: "{{ inventory_dir }}/ceph"
+ceph_service_specs: >-
+  {{ query('ansible.builtin.file', *(query('ansible.builtin.fileglob', ceph_state_dir ~ '/services/*.yml') | sort))
+     | map('from_yaml_all') | map('list') | flatten(levels=1) | select | list }}
+ceph_config: "{{ lookup('ansible.builtin.file', ceph_state_dir ~ '/config.yml') | from_yaml | default({}, true) }}"
+ceph_pools: "{{ lookup('ansible.builtin.file', ceph_state_dir ~ '/pools.yml') | from_yaml | default({}, true) }}"
+# playbooks/drift.yml: fail (non-zero exit) when the cluster differs from the files.
+ceph_drift_fail: true
 
 # ---- Waiting ---------------------------------------------------------------------------------------
 # Deployment waits (mon quorum, OSDs up/in, HEALTH_OK after pools): up to retries x delay = 1 min.

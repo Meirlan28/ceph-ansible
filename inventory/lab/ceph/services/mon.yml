@@ -1,0 +1,5 @@
+# cephadm service spec, native format (the same as `ceph orch ls --export`).
+# Applied with ceph orch apply by the role (--tags ceph_services); playbooks/drift.yml compares it with the cluster.
+service_type: mon
+placement:
+  label: mon

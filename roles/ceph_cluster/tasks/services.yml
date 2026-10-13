@@ -1,11 +1,11 @@
 ---
-- name: Ceph config set | {{ item.who ~ ' ' ~ item.option ~ '=' ~ item.value }}
+- name: Ceph config set (config.yml)
   ceph.cephadm.ceph_config:
     action: set
     who: "{{ item.who }}"
     option: "{{ item.option }}"
-    value: "{{ item.value }}"
-  loop: "{{ ceph_config }}"
+    value: "{{ (item.value | string | lower) if item.value is boolean else (item.value | string) }}"
+  loop: "{{ ceph_cluster_config_list }}"
   loop_control:
     label: "{{ item.who }} {{ item.option }}={{ item.value }}"
   when: inventory_hostname == admin_node
@@ -23,16 +23,16 @@
 
 - name: Restart OSD services so they bind to the new cluster network
   ansible.builtin.command: ceph orch restart osd.{{ item.service_id }}
-  loop: "{{ ceph_service_specs | selectattr('service_type', 'equalto', 'osd') | list }}"
+  loop: "{{ ceph_cluster_specs | selectattr('service_type', 'equalto', 'osd') | list }}"
   loop_control:
     label: "osd.{{ item.service_id }}"
   when: inventory_hostname == admin_node and ceph_cluster_net_config is changed
   changed_when: true
 
-- name: Ceph orch apply {{ item.service_type }}
+- name: Ceph orch apply (services/*.yml)
   ceph.cephadm.ceph_orch_apply:
     spec: "{{ item | to_nice_yaml }}"
-  loop: "{{ ceph_service_specs }}"
+  loop: "{{ ceph_cluster_specs }}"
   loop_control:
     label: "{{ item.service_type }}{{ ('.' ~ item.service_id) if item.service_id is defined else '' }}"
   when: inventory_hostname == admin_node

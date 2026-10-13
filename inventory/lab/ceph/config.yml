@@ -1,0 +1,11 @@
+# ceph config set <who> <option> <value>, applied before OSDs are created (--tags ceph_services).
+# <who>: global, mon, mgr, osd, osd.3, osd/class:hdd ... (as in `ceph config dump`: section[/mask]).
+# Only these entries are managed; options cephadm sets itself (container_image, ...) are left alone.
+# cluster_network comes from ceph_cluster_network in group_vars (bootstrap needs it).
+osd:
+  osd_memory_target_autotune: false
+  osd_memory_target: 1073741824     # 1 GiB, small lab nodes
+mon:
+  mon_allow_pool_delete: true
+mgr:
+  mgr/cephadm/host_check_interval: 60

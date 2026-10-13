@@ -1,0 +1,13 @@
+---
+# Read-only drift check: does the running cluster match the inventory and inventory/<env>/ceph/*?
+#   ansible-playbook playbooks/drift.yml                     exit 0 = no drift, non-zero = differences listed
+#   ansible-playbook playbooks/drift.yml -e ceph_drift_fail=false   report only
+- name: Ceph drift check
+  hosts: admin
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Compare the cluster with the repo
+      ansible.builtin.include_role:
+        name: ceph_cluster
+        tasks_from: drift.yml

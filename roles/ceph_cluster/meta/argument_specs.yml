@@ -23,23 +23,11 @@ argument_specs:
       ntp_allow: {type: list, elements: str, description: Addresses/CIDRs allowed to query ntp_server.}
       ntp_wait_retries: {type: int, description: Time check retries (5 s apart).}
       ntp_max_offset: {type: float, description: Max accepted clock offset in seconds.}
-      ceph_config:
-        type: list
-        elements: dict
-        description: ceph config set entries.
-        options:
-          who: {type: str, required: true}
-          option: {type: str, required: true}
-          value: {type: str, required: true}
-      ceph_service_specs: {type: list, elements: dict, description: cephadm service specs applied with ceph orch apply.}
-      ceph_pools:
-        type: list
-        elements: dict
-        description: Pools to create.
-        options:
-          name: {type: str, required: true}
-          pg_num: {type: int, default: 32}
-          application: {type: str}
+      ceph_state_dir: {type: str, description: "Directory with services/*.yml, config.yml, pools.yml (default: <inventory dir>/ceph)."}
+      ceph_config: {type: dict, description: "ceph config entries: <who>: {<option>: <value>} (default: config.yml)."}
+      ceph_service_specs: {type: list, elements: dict, description: "cephadm service specs (default: services/*.yml)."}
+      ceph_pools: {type: dict, description: "Pools: <name>: {pg_num, application} (default: pools.yml)."}
+      ceph_drift_fail: {type: bool, description: Fail the drift check when differences are found.}
       ceph_wait_retries: {type: int, description: Retries of deployment waits (mons, OSDs, HEALTH_OK).}
       ceph_wait_delay: {type: int, description: Seconds between retries (deployment and verification).}
       ceph_verify_retries: {type: int, description: Retries of the verification wait for HEALTH_OK.}

@@ -1,0 +1,141 @@
+---
+# Read-only: compare the running cluster with the desired state and list every difference.
+# Covered (what the role manages):
+#   hosts      inventory group ceph_inventory_group vs `ceph orch host ls` (missing/extra, address, labels)
+#   services   ceph_state_dir/services/*.yml vs `ceph orch ls --export` (missing/extra/different spec)
+#   config     entries of config.yml (+ cluster_network) vs `ceph config dump`; undeclared options are ignored
+#   pools      pools.yml vs `ceph osd pool ls detail` (missing/extra, application; pg_num only if autoscale off)
+# Not covered: daemons and OSDs themselves (cephadm reconciles them from the specs), undeclared config.
+- name: Desired state
+  ansible.builtin.import_tasks: state.yml
+
+- name: Cluster state
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - ceph orch host ls --format json
+    - ceph orch ls --export --format json
+    - ceph config dump --format json
+    - ceph osd pool ls detail --format json
+  register: ceph_drift_raw
+  changed_when: false
+  check_mode: false
+
+- name: Parse cluster state
+  ansible.builtin.set_fact:
+    ceph_drift_hosts: "{{ ceph_drift_raw.results[0].stdout | from_json }}"
+    ceph_drift_have: "{{ dict(ceph_drift_specs | map(attribute='service_name') | zip(ceph_drift_specs)) }}"
+    ceph_drift_config: "{{ ceph_drift_raw.results[2].stdout | from_json }}"
+    ceph_drift_pools: "{{ ceph_drift_raw.results[3].stdout | from_json }}"
+    ceph_drift_want: {}
+    ceph_drift: []
+  vars:
+    ceph_drift_specs: "{{ ceph_drift_raw.results[1].stdout | from_json }}"
+
+# ---- Hosts -------------------------------------------------------------------------------------------
+- name: Hosts | inventory vs cluster
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + ([msg] if msg else []) }}"
+  vars:
+    want_addr: "{{ hostvars[item].ceph_ip | default(hostvars[item].ansible_host | default(item)) }}"
+    want_labels: "{{ (hostvars[item].ceph_labels | default([]) + (['_admin'] if item in groups['admin'] | default([admin_node]) else [])) | unique | sort }}"
+    have: "{{ ceph_drift_hosts | selectattr('hostname', 'equalto', item) | first | default({}) }}"
+    msg: >-
+      {%- if have | length == 0 -%}host {{ item }}: in the inventory, not in the cluster
+      {%- elif have.addr != want_addr -%}host {{ item }}: address {{ have.addr }} in the cluster, {{ want_addr }} in the inventory
+      {%- elif (have.labels | sort) != want_labels -%}host {{ item }}: labels [{{ have.labels | sort | join(', ') }}] in the cluster, [{{ want_labels | join(', ') }}] in the inventory
+      {%- endif -%}
+  loop: "{{ groups[ceph_inventory_group] | default([]) }}"
+
+- name: Hosts | not in the inventory
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + ['host ' ~ item ~ ': in the cluster, not in the inventory'] }}"
+  loop: "{{ ceph_drift_hosts | map(attribute='hostname') | difference(groups[ceph_inventory_group] | default([])) }}"
+
+# ---- Service specs -----------------------------------------------------------------------------------
+- name: Services | desired specs by service name
+  ansible.builtin.set_fact:
+    ceph_drift_want: "{{ ceph_drift_want | combine({name: item | combine({'service_name': name})}) }}"
+  vars:
+    name: "{{ item.service_type ~ (('.' ~ item.service_id) if item.service_id is defined else '') }}"
+  loop: "{{ ceph_cluster_specs }}"
+  loop_control:
+    label: "{{ name }}"
+
+- name: Services | missing or different
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + [msg] }}"
+  vars:
+    msg: >-
+      {{ 'service ' ~ item ~ (': in the repo, not in the cluster' if item not in ceph_drift_have
+         else ': spec differs from the repo (see the next task)') }}
+  loop: "{{ ceph_drift_want.keys() | list }}"
+  when: item not in ceph_drift_have or ceph_drift_want[item] != ceph_drift_have[item]
+
+- name: Services | spec in the repo vs in the cluster
+  ansible.builtin.debug:
+    msg: |
+      repo ({{ ceph_state_dir }}/services):
+      {{ ceph_drift_want[item] | to_nice_yaml(indent=2) | indent(2, true) }}
+      cluster (ceph orch ls --export):
+      {{ ceph_drift_have[item] | to_nice_yaml(indent=2) | indent(2, true) }}
+  loop: "{{ ceph_drift_want.keys() | intersect(ceph_drift_have.keys()) }}"
+  when: ceph_drift_want[item] != ceph_drift_have[item]
+
+- name: Services | not in the repo
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + ['service ' ~ item ~ ': in the cluster, not in the repo'] }}"
+  loop: "{{ ceph_drift_have.keys() | difference(ceph_drift_want.keys()) }}"
+
+# ---- ceph config ---------------------------------------------------------------------------------------
+- name: Config | declared entries
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + ['config ' ~ item.who ~ ' ' ~ item.option ~ ': ' ~ have ~ ' in the cluster, ' ~ want ~ ' in the repo'] }}"
+  vars:
+    section: "{{ item.who.split('/') | first }}"
+    mask: "{{ item.who.split('/')[1:] | join('/') }}"
+    want: "{{ (item.value | string | lower) if item.value is boolean else (item.value | string) }}"
+    have: >-
+      {{ ceph_drift_config | selectattr('section', 'equalto', section) | selectattr('mask', 'equalto', mask)
+         | selectattr('name', 'equalto', item.option) | map(attribute='value') | first | default('<unset>') }}
+  loop: >-
+    {{ ceph_cluster_config_list + ([{'who': 'global', 'option': 'cluster_network', 'value': ceph_cluster_network}]
+       if ceph_cluster_network | length > 0 else []) }}
+  loop_control:
+    label: "{{ item.who }} {{ item.option }}"
+  when: have | string != want | string
+
+# ---- Pools ---------------------------------------------------------------------------------------------
+- name: Pools | declared pools
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + ([msg] if msg else []) }}"
+  vars:
+    have: "{{ ceph_drift_pools | selectattr('pool_name', 'equalto', item.name) | first | default({}) }}"
+    msg: >-
+      {%- if have | length == 0 -%}pool {{ item.name }}: in the repo, not in the cluster
+      {%- elif item.application is defined and item.application not in have.application_metadata -%}pool {{ item.name }}: application [{{ have.application_metadata | list | join(', ') }}] in the cluster, {{ item.application }} in the repo
+      {%- elif have.pg_autoscale_mode == 'off' and have.pg_num | int != item.pg_num | default(32) | int -%}pool {{ item.name }}: pg_num {{ have.pg_num }} in the cluster, {{ item.pg_num | default(32) }} in the repo (autoscale off)
+      {%- endif -%}
+  loop: "{{ ceph_cluster_pool_list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Pools | not in the repo (system pools such as .mgr are ignored)
+  ansible.builtin.set_fact:
+    ceph_drift: "{{ ceph_drift + ['pool ' ~ item ~ ': in the cluster, not in the repo'] }}"
+  loop: "{{ ceph_drift_pools | map(attribute='pool_name') | reject('match', '[.]') | difference(ceph_cluster_pool_list | map(attribute='name')) }}"
+
+# ---- Result --------------------------------------------------------------------------------------------
+- name: Drift
+  ansible.builtin.debug:
+    msg: "{{ ceph_drift if ceph_drift | length > 0 else 'none: the cluster matches the inventory and ' ~ ceph_state_dir }}"
+
+- name: Cluster matches the repo
+  ansible.builtin.assert:
+    that: ceph_drift | length == 0
+    fail_msg: >-
+      {{ ceph_drift | length }} difference(s), listed above. Either apply the repo
+      (ansible-playbook playbooks/ceph.yml --tags ceph_hosts,ceph_services,ceph_pools) or change the repo to
+      match the cluster. Things "in the cluster, not in the repo" are not removed by the role: add them to
+      the repo or remove them by hand (ceph orch rm / ceph osd pool rm).
+    quiet: true
+  when: ceph_drift_fail | bool

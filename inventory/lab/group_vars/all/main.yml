@@ -1,6 +1,6 @@
 ---
 # Environment-specific values only; everything else has a default in roles/ceph_cluster/defaults/main.yml
-# (ceph_config, ceph_service_specs, ceph_pools, NTP, ...). Override any of them here.
+# (NTP, waits, ...). Override any of them here. Desired cluster state (services, config, pools): inventory/lab/ceph/.
 
 # ---- Access -------------------------------------------------------------------------------------
 # Ansible and cephadm both log in as this user (passwordless sudo, provided by the OS/infra layer).

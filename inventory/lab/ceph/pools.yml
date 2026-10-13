@@ -1,0 +1,5 @@
+# Pools: <name>: {pg_num, application}. Created if missing, application enabled (rbd: also rbd pool init).
+# pg_num is the initial value; the PG autoscaler owns it afterwards (drift ignores it unless autoscale is off).
+rbd:
+  pg_num: 32
+  application: rbd

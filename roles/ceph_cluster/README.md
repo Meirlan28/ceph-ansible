@@ -26,9 +26,10 @@ Required inventory: group `admin` (first host bootstraps; or set `admin_node`), 
 | `ceph_bootstrap` | admin_node | `ceph.cephadm.cephadm_bootstrap` unless `/etc/ceph/ceph.conf` exists |
 | `ceph_ssh_key` | all | cephadm public key → `authorized_keys` of `cephadm_ssh_user`; `ceph cephadm set-user` |
 | `ceph_hosts` | all (delegated to admin_node) | `ceph.cephadm.ceph_orch_host` with `ceph_labels`, `_admin` for group `admin` |
-| `ceph_services` | admin_node | `ceph.cephadm.ceph_config` for `ceph_config`, `ceph.cephadm.ceph_orch_apply` for `ceph_service_specs`, wait for mons/OSDs |
-| `ceph_pools` | admin_node | create `ceph_pools`, enable application, `rbd pool init`, wait for HEALTH_OK |
+| `ceph_services` | admin_node | `ceph.cephadm.ceph_config` for `config.yml`, `ceph.cephadm.ceph_orch_apply` for `services/*.yml`, wait for mons/OSDs |
+| `ceph_pools` | admin_node | create pools of `pools.yml`, enable application, `rbd pool init`, wait for HEALTH_OK |
 | `ceph_verify` | admin_node | HEALTH_OK, quorum, OSDs up/in, PGs active+clean, RBD bench |
+| (`tasks_from: drift.yml`) | admin_node | read-only: hosts/labels, service specs, declared config, pools vs the cluster; lists every difference |
 
 ## Variables
 
@@ -46,9 +47,9 @@ All with defaults and comments in [defaults/main.yml](defaults/main.yml); valida
 | `ceph_ntp_mode`, `ntp_upstream`, `ntp_server` | `cluster`, `[pool.ntp.org]`, `admin_node` |
 | `ntp_allow` | `ceph_ip` of every host in group `ceph_inventory_group` (`ceph`), independent of `--limit`; or CIDRs |
 | `ntp_wait_retries` / `ntp_max_offset` | 12 (× 5 s = 1 min) / 0.05 s — time check fails fast with sources and a hint |
-| `ceph_config` | OSD memory 1 GiB, no autotune, pool delete allowed, host check 60 s |
-| `ceph_service_specs` | mon (label mon), mgr ×2 (label mgr), crash (all), osd drive group (label osd, all blank disks) |
-| `ceph_pools` | `rbd`, 32 PG, application rbd |
+| `ceph_state_dir` | `<inventory dir>/ceph`: desired state files `services/*.yml` (native cephadm specs), `config.yml`, `pools.yml` |
+| `ceph_service_specs` / `ceph_config` / `ceph_pools` | read from those files; set one in group_vars only to bypass its file |
+| `ceph_drift_fail` | `true` — `tasks/drift.yml` (playbooks/drift.yml) fails when the cluster differs |
 | `ceph_wait_retries` / `ceph_wait_delay` / `ceph_verify_retries` | 12 / 5 s / 18 — deployment waits up to 1 min, verification up to 90 s |
 
 ## cephadm-ansible v5.0.3 workarounds inside the role

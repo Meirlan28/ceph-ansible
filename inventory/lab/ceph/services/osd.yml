@@ -1,0 +1,12 @@
+# cephadm OSD service spec (drive group), native format (the same as `ceph orch ls --export`).
+# ceph_orch_apply compares field by field with that export, so cephadm defaults (filter_logic,
+# objectstore) are written out to keep re-runs unchanged.
+service_type: osd
+service_id: default_drive_group
+placement:
+  label: osd
+spec:
+  data_devices:
+    all: true          # every available (blank) disk on osd-labelled hosts
+  filter_logic: AND
+  objectstore: bluestore

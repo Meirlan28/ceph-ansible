@@ -1,0 +1,29 @@
+---
+# Desired state from the files in ceph_state_dir, flattened into the lists the other phases loop over.
+- name: Desired state | read {{ ceph_state_dir }}
+  ansible.builtin.set_fact:
+    ceph_cluster_specs: "{{ ceph_service_specs }}"
+    ceph_cluster_config_list: []
+    ceph_cluster_pool_list: []
+
+- name: Desired state | service specs present
+  ansible.builtin.assert:
+    that: ceph_cluster_specs | length > 0
+    fail_msg: "No cephadm service specs in {{ ceph_state_dir }}/services/*.yml"
+    quiet: true
+
+- name: Desired state | ceph config
+  ansible.builtin.set_fact:
+    ceph_cluster_config_list: >-
+      {{ ceph_cluster_config_list + (item.value | default({}, true) | dict2items(key_name='option', value_name='value')
+         | map('combine', {'who': item.key}) | list) }}
+  loop: "{{ ceph_config | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Desired state | pools
+  ansible.builtin.set_fact:
+    ceph_cluster_pool_list: "{{ ceph_cluster_pool_list + [item.value | default({}, true) | combine({'name': item.key})] }}"
+  loop: "{{ ceph_pools | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

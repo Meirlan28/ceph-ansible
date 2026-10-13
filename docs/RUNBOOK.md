@@ -98,8 +98,10 @@ ansible --version | head -3    # config file = /home/ceph-admin/ceph-cluster/ans
 | `inventory/lab/hosts.yml` | ноды, их IP (`ceph_ip`), метки (`ceph_labels`), группы `ceph`, `admin`, `clients` |
 | `inventory/lab/group_vars/all/main.yml` | только то, что зависит от окружения: пользователь, admin_node, версия Ceph, сети, дашборд |
 | `inventory/lab/group_vars/all/vault.yml` | секреты, зашифрованы ansible-vault (создашь на шаге 4) |
-| `roles/ceph_cluster/` | **роль** со всей логикой поверх cephadm-ansible: фазы time → bootstrap → ssh_key → hosts → services → pools → verify (`tasks/`), дефолты с комментариями (`defaults/main.yml`, там же **спецификации сервисов cephadm** `ceph_service_specs`, `ceph_config`, пулы), проверка входных переменных (`meta/argument_specs.yml`) |
+| `inventory/lab/ceph/` | **желаемое состояние кластера** (см. «Состояние кластера в репе»): `services/*.yml` — спеки сервисов cephadm в родном формате, `config.yml` — `ceph config`, `pools.yml` — пулы |
+| `roles/ceph_cluster/` | **роль** со всей логикой поверх cephadm-ansible: фазы time → bootstrap → ssh_key → hosts → services → pools → verify (`tasks/`), сравнение с кластером (`tasks/drift.yml`), дефолты с комментариями (`defaults/main.yml`), проверка входных переменных (`meta/argument_specs.yml`) |
 | `playbooks/ceph.yml` | применяет роль к группе `ceph`; фазы запускаются тегами `ceph_*` |
+| `playbooks/drift.yml` | только чтение: сравнивает живой кластер с инвентарём и `inventory/lab/ceph/`, перечисляет расхождения |
 | `playbooks/10-preflight.yml`, `99-purge.yml` | обёртки над плейбуками cephadm-ansible (пакеты; снос) |
 | `site.yml` | preflight + роль целиком (когда уже понимаешь, что делает каждая фаза) |
 
@@ -192,7 +194,7 @@ ansible all -m command -a 'id'          # become: true → uid=0(root)
 ```
 
 `hosts.yml`: имена нод должны совпадать с их `hostname` (cephadm это проверяет). `ceph_labels` — метки, по которым
-`ceph_service_specs` (defaults роли) размещают демоны: mon на всех трёх, mgr на ceph-1/2, osd на всех.
+спеки сервисов (`inventory/lab/ceph/services/*.yml`) размещают демоны: mon на ceph-1..3, mgr на ceph-1/2, osd на всех.
 
 ---
 
@@ -293,13 +295,13 @@ ansible-playbook playbooks/ceph.yml --tags ceph_hosts
 ansible-playbook playbooks/ceph.yml --tags ceph_services
 ```
 
-1. `ceph.cephadm.ceph_config` — `ceph config set` для списка `ceph_config` (память OSD 1 GiB и т.п.). Ставится
-   **до** создания OSD, чтобы они сразу стартовали с нужным лимитом.
-2. `ceph.cephadm.ceph_orch_apply` — `ceph orch apply` для каждой спецификации из `ceph_service_specs`. Это декларативно: ты описываешь
+1. `ceph.cephadm.ceph_config` — `ceph config set` для каждой записи `inventory/lab/ceph/config.yml` (память OSD
+   1 GiB и т.п.). Ставится **до** создания OSD, чтобы они сразу стартовали с нужным лимитом.
+2. `ceph.cephadm.ceph_orch_apply` — `ceph orch apply` для каждой спеки из `inventory/lab/ceph/services/*.yml`. Это декларативно: ты описываешь
    "mon на всех хостах с меткой mon", оркестратор сам добивается этого состояния и держит его.
 3. Ожидание: кворум из всех mon, OSD по числу osd-хостов в состоянии up/in.
 
-OSD-спека (последний элемент `ceph_service_specs` в `roles/ceph_cluster/defaults/main.yml`) — drive group: на хостах с меткой osd взять все *доступные* диски. Доступный = без
+OSD-спека (`inventory/lab/ceph/services/osd.yml`) — drive group: на хостах с меткой osd взять все *доступные* диски. Доступный = без
 разделов, LVM и ФС (в лабе это пустой диск 10 GB; системный диск недоступен). Перед применением в проде смотрят:
 
 ```bash
@@ -323,7 +325,7 @@ sudo ceph osd tree              # 3 OSD, по одному на хост, up
 ansible-playbook playbooks/ceph.yml --tags ceph_pools
 ```
 
-Создаёт недостающие пулы из `ceph_pools` (`rbd`, 32 PG), включает приложение и делает `rbd pool init`, затем ждёт
+Создаёт недостающие пулы из `inventory/lab/ceph/pools.yml` (`rbd`, 32 PG), включает приложение и делает `rbd pool init`, затем ждёт
 HEALTH_OK. Проверка: `sudo ceph osd pool ls detail`, `sudo ceph -s` → `HEALTH_OK`, `pgs: 33 active+clean`.
 
 ---
@@ -346,12 +348,52 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 
 ---
 
+## Состояние кластера в репе
+
+Что должно быть в кластере, описано файлами, роль приводит кластер к ним, `drift.yml` проверяет, что так и есть:
+
+| Что | Где | Применить |
+|---|---|---|
+| хосты, адреса, метки | `inventory/lab/hosts.yml` (`ceph_ip`, `ceph_labels`; `_admin` — группа `admin`) | `--tags ceph_hosts` |
+| сервисы (mon, mgr, osd, rgw, mds, ...) | `inventory/lab/ceph/services/*.yml` — спеки cephadm в родном формате | `--tags ceph_services` |
+| `ceph config` | `inventory/lab/ceph/config.yml`: `<who>: {<option>: <value>}` | `--tags ceph_services` |
+| пулы | `inventory/lab/ceph/pools.yml`: `<name>: {pg_num, application}` | `--tags ceph_pools` |
+
+Формат `services/*.yml` — ровно тот, что выдаёт `sudo ceph orch ls --export` (без поля `service_name`, его cephadm
+вычисляет сам). Поэтому новую спеку удобно делать так: сначала попробовать руками (`ceph orch apply ... --dry-run`),
+потом `sudo ceph orch ls rgw --export > inventory/lab/ceph/services/rgw.yml`, убрать `service_name`, закоммитить.
+Один файл — один сервис (несколько документов через `---` тоже можно).
+
+Цикл работы:
+
+```bash
+vi inventory/lab/ceph/services/mgr.yml                     # 1. правишь файл
+ansible-playbook playbooks/drift.yml                       # 2. видишь, что поменяется (exit != 0, список отличий)
+ansible-playbook playbooks/ceph.yml --tags ceph_services   # 3. применяешь
+ansible-playbook playbooks/drift.yml                       # 4. "none: the cluster matches ..." , exit 0
+git commit -am "mgr: 3 daemons" && git push                # 5. состояние в git
+```
+
+`drift.yml` ничего не меняет и сравнивает в обе стороны: «в репе, нет в кластере», «в кластере, нет в репе»
+(кто-то сделал `ceph orch apply` руками), «отличается» (для спек показывает обе версии). `-e ceph_drift_fail=false` —
+только отчёт без ошибки. Не сравнивает: опции `ceph config`, которых нет в `config.yml` (cephadm сам ставит
+`container_image` и т.п.), `pg_num` при включённом автоскейлере, системные пулы (`.mgr`), сами демоны и OSD.
+
+Удаления роль не делает: убрал файл сервиса или пул — `drift.yml` покажет «в кластере, нет в репе», а удаляешь
+осознанно руками (`sudo ceph orch rm rgw.foo`, `sudo ceph osd pool rm ...`). Автоматическое удаление по репе — это
+отдельное решение (ошибка в репе = снесённый сервис), сейчас его нет.
+
+`--check` для этой роли **не** показывает изменений: модули cephadm-ansible в check mode сразу отвечают
+`changed=false`, ничего не сравнивая. План изменений — это `drift.yml`.
+
 ## Типовые операции
 
 | Задача | Как |
 |---|---|
-| Поменять настройку Ceph | переопредели `ceph_config` в group_vars (целиком список, дефолт — в defaults роли) → `playbooks/ceph.yml --tags ceph_services` |
-| Поменять размещение демонов | переопредели `ceph_service_specs` в group_vars или поменяй `ceph_labels` → `--tags ceph_hosts,ceph_services` |
+| Поменять настройку Ceph | `inventory/lab/ceph/config.yml` → `drift.yml` → `playbooks/ceph.yml --tags ceph_services` |
+| Поменять размещение демонов / добавить сервис | файл в `inventory/lab/ceph/services/` или `ceph_labels` в `hosts.yml` → `drift.yml` → `--tags ceph_hosts,ceph_services` |
+| Добавить пул | `inventory/lab/ceph/pools.yml` → `--tags ceph_pools` |
+| Проверить, что кластер = репа | `ansible-playbook playbooks/drift.yml` |
 | Добавить ноду | VMwareLab: нода в `clusters\ceph\cluster.json` → `vmlab up ceph`; здесь: нода в `hosts.yml` → `10`, `20`, `40`, `50`, `60` с `--limit` новой ноды где возможно |
 | Вывести ноду | `sudo ceph orch host drain ceph-3` → дождаться `ceph orch ps ceph-3` пусто → `sudo ceph orch host rm ceph-3` → убрать из инвентаря; потом из lab (`up --prune`) |
 | Обновить Ceph | `sudo ceph orch upgrade start --image quay.io/ceph/ceph:vX.Y.Z`, следить `ceph orch upgrade status`; потом поднять `ceph_release` и прогнать preflight (пакеты cephadm/ceph-common) |
@@ -369,7 +411,8 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 | Модули импортируют `ansible.module_utils.ceph_common` по-старому | `No module named 'module_utils'` | `module_utils = ...` в `ansible.cfg` |
 | Проверка "уже bootstrapped" смотрит `/var/lib/ceph/ceph.conf`, а cephadm пишет `/etc/ceph` | повторный bootstrap падает | свой `stat /etc/ceph/ceph.conf` перед модулем |
 | `dashboard_user/password` — устаревшие алиасы, модуль их молча игнорирует | дашборд со случайным паролем | `initial_dashboard_user/password`, `skip_monitoring_stack` |
-| `ceph_orch_apply` сравнивает спеку по полям с `ceph orch ls --export` | OSD-спека "changed" на каждом запуске | в OSD-спеке (`ceph_service_specs`) явно `filter_logic`, `objectstore` |
+| `ceph_orch_apply` сравнивает спеку по полям с `ceph orch ls --export` | OSD-спека "changed" на каждом запуске | в OSD-спеке (`services/osd.yml`) явно `filter_logic`, `objectstore` |
+| `ceph_orch_apply`, `ceph_config` в check mode возвращают `changed=false` без сравнения | `--check` молчит о реальных изменениях | план изменений — `playbooks/drift.yml` |
 | Purge читает `client_group`, который задаёт только preflight | `'client_group' is undefined` | `client_group: clients` в group_vars |
 | ansible-core ≥ 2.19 требует булевы условия, а в upstream есть `when: cephadm_exists.rc` (число) | purge: `Conditionals must have a boolean result` | `allow_broken_conditionals = True` в `ansible.cfg` |
 

@@ -1,5 +1,9 @@
 ---
 # Phases in order; each can be run alone with its tag (see docs/RUNBOOK.md).
+- name: Desired state (files in ceph_state_dir)
+  ansible.builtin.import_tasks: state.yml
+  tags: [always]
+
 - name: Time synchronisation
   ansible.builtin.import_tasks: time.yml
   when: ceph_ntp_mode == 'cluster'
