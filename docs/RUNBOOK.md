@@ -371,6 +371,7 @@ services ~3 мин, pools 30 с — около 7 минут на всё; `site.y
 | `dashboard_user/password` — устаревшие алиасы, модуль их молча игнорирует | дашборд со случайным паролем | `initial_dashboard_user/password`, `skip_monitoring_stack` |
 | `ceph_orch_apply` сравнивает спеку по полям с `ceph orch ls --export` | OSD-спека "changed" на каждом запуске | в OSD-спеке (`ceph_service_specs`) явно `filter_logic`, `objectstore` |
 | Purge читает `client_group`, который задаёт только preflight | `'client_group' is undefined` | `client_group: clients` в group_vars |
+| ansible-core ≥ 2.19 требует булевы условия, а в upstream есть `when: cephadm_exists.rc` (число) | purge: `Conditionals must have a boolean result` | `allow_broken_conditionals = True` в `ansible.cfg` |
 
 ## Работа с кодом дальше
 
